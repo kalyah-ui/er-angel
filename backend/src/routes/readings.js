@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db/db.js";
 import { classifyRisk } from "../services/geminiRisk.js";
 import { generateAlertLine } from "../services/geminiAlertText.js";
+import { evaluateEdaAlert } from "../logic/edaAlert.js";
 
 export const readingsRouter = Router();
 
@@ -39,6 +40,16 @@ readingsRouter.post("/", async (req, res) => {
     .prepare("SELECT * FROM readings WHERE patient_id = ? AND is_baseline = 1 ORDER BY created_at ASC LIMIT 1")
     .get(patient_id);
 
+  const history = db
+    .prepare("SELECT heart_rate, breathing_rate, stress_score FROM readings WHERE patient_id = ? AND id < ? ORDER BY id DESC LIMIT 5")
+    .all(patient_id, reading.id)
+    .reverse();
+
+  const edaAlert = evaluateEdaAlert({
+    current: { heart_rate, breathing_rate, stress_score },
+    history,
+  });
+
   const minutesElapsed = baseline
     ? Math.round((new Date(reading.created_at) - new Date(baseline.created_at)) / 60000)
     : 0;
@@ -52,8 +63,28 @@ readingsRouter.post("/", async (req, res) => {
     minutesElapsed,
   });
 
+  if (edaAlert.triggered) {
+    const pairedVitals = edaAlert.accompanyingVitalsIncreasing;
+    riskJson.risk_level = pairedVitals || riskJson.risk_level === "high"
+      ? "high"
+      : "medium";
+    const edaReason = edaAlert.aboveBaseline
+      ? `EDA is ${Math.round(edaAlert.percentAboveBaseline)}% above its rolling baseline`
+      : "EDA has risen for 3 consecutive check-ins";
+    const increasingVitals = [
+      edaAlert.heartRateIncreasing ? "heart rate" : null,
+      edaAlert.breathingRateIncreasing ? "breathing rate" : null,
+    ].filter(Boolean).join(" and ");
+    riskJson.delta_summary = `${riskJson.delta_summary} EDA alert: ${edaReason}${pairedVitals ? `, with increasing ${increasingVitals}` : ""}.`;
+    riskJson.recommended_action = pairedVitals
+      ? "Prompt nurse reassessment due to concurrent EDA and vital-sign increases."
+      : "Nurse review recommended; repeat vitals and assess the patient.";
+  }
+
   const patientLabel = `Patient ${patient.id}`;
-  const reasonText = await generateAlertLine(riskJson, patientLabel);
+  const reasonText = edaAlert.triggered
+    ? `${patientLabel}: ${riskJson.delta_summary}`
+    : await generateAlertLine(riskJson, patientLabel);
 
   const insertAlert = db.prepare(`
     INSERT INTO alerts (patient_id, reading_id, risk_level, delta_summary, reason_text, recommended_action)
