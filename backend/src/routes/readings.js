@@ -7,9 +7,9 @@ import { evaluateEdaAlert } from "../logic/edaAlert.js";
 export const readingsRouter = Router();
 
 // POST /reading
-// { patient_id, heart_rate, breathing_rate, stress_score, is_baseline }
+// { patient_id, heart_rate, breathing_rate, stress_score, face_asymmetry_score, is_baseline }
 readingsRouter.post("/", async (req, res) => {
-  const { patient_id, heart_rate, breathing_rate, stress_score, is_baseline } = req.body;
+  const { patient_id, heart_rate, breathing_rate, stress_score, face_asymmetry_score, is_baseline } = req.body;
 
   if (!patient_id || heart_rate == null) {
     return res.status(400).json({ error: "patient_id and heart_rate are required" });
@@ -19,14 +19,15 @@ readingsRouter.post("/", async (req, res) => {
   if (!patient) return res.status(404).json({ error: "patient not found" });
 
   const insertReading = db.prepare(`
-    INSERT INTO readings (patient_id, heart_rate, breathing_rate, stress_score, is_baseline)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO readings (patient_id, heart_rate, breathing_rate, stress_score, face_asymmetry_score, is_baseline)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   const info = insertReading.run(
     patient_id,
     heart_rate,
     breathing_rate ?? null,
     stress_score ?? null,
+    face_asymmetry_score ?? null,
     is_baseline ? 1 : 0
   );
   const reading = db.prepare("SELECT * FROM readings WHERE id = ?").get(info.lastInsertRowid);

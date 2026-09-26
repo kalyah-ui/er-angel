@@ -10,11 +10,11 @@ export async function checkIn({ name, chief_complaint }) {
   return res.json();
 }
 
-export async function submitReading({ patient_id, heart_rate, breathing_rate, stress_score, is_baseline }) {
+export async function submitReading({ patient_id, heart_rate, breathing_rate, stress_score, face_asymmetry_score, is_baseline }) {
   const res = await fetch(`${BASE_URL}/reading`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ patient_id, heart_rate, breathing_rate, stress_score, is_baseline }),
+    body: JSON.stringify({ patient_id, heart_rate, breathing_rate, stress_score, face_asymmetry_score, is_baseline }),
   });
   if (!res.ok) throw new Error("reading submission failed");
   return res.json();

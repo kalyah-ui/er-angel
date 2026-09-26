@@ -23,6 +23,7 @@ export default function Rescan({ patient, onDone }) {
         heart_rate: vitals.heart_rate,
         breathing_rate: vitals.breathing_rate,
         stress_score: vitals.stress_score,
+        face_asymmetry_score: vitals.face_asymmetry_score,
         is_baseline: false,
       });
 
