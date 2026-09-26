@@ -1,4 +1,4 @@
-# WaitWatch
+# ER Angel
 
 ER waiting room guardian. A kiosk captures a contactless vitals baseline
 (Presage) at check-in. Every rescan is compared against that baseline by
