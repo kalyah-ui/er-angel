@@ -41,6 +41,27 @@ export function getPatient(id) {
   return request(`/patients/${encodeURIComponent(id)}`);
 }
 
+// MP3 for a voice line (backend proxies ElevenLabs; the key stays server-side).
+// Throws if voice is off or ElevenLabs fails -- callers fall back to browser speech.
+export async function fetchSpeech(text) {
+  const res = await fetch(`${BASE_URL}/speak`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) {
+    let reason = "";
+    try {
+      reason = (await res.json()).reason || "";
+    } catch {
+      // non-JSON error body
+    }
+    throw new Error(`/speak HTTP ${res.status}${reason ? `: ${reason}` : ""}`);
+  }
+  return res.blob();
+}
+
 export async function getBaseline(patientId) {
   const readings = await request(`/reading/patient/${encodeURIComponent(patientId)}`);
   return readings.find((r) => Number(r.is_baseline)) || null;

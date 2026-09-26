@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { isFlagDisabled } from "../logic/envFlags.js";
 
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 // Previous Flash generation: separate capacity, so a demand spike on the
@@ -37,8 +38,7 @@ function apiKeys() {
  * during development; unset means enabled.
  */
 export function geminiDisabledReason() {
-  const flag = (process.env.GEMINI_ENABLED ?? "").trim().toLowerCase();
-  if (["false", "0", "no", "off"].includes(flag)) return "GEMINI_ENABLED=false";
+  if (isFlagDisabled("GEMINI_ENABLED")) return "GEMINI_ENABLED=false";
   if (!apiKeys().length) return "no GEMINI_API_KEY set";
   return null;
 }

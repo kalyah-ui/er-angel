@@ -8,6 +8,7 @@ import { readingsRouter } from "./routes/readings.js";
 import { patientsRouter } from "./routes/patients.js";
 import { alertsRouter } from "./routes/alerts.js";
 import { adminRouter } from "./routes/admin.js";
+import { speakRouter } from "./routes/speak.js";
 
 const app = express();
 app.use(cors());
@@ -20,6 +21,7 @@ app.use("/reading", readingsRouter);
 app.use("/patients", patientsRouter);
 app.use("/alerts", alertsRouter);
 app.use("/admin", adminRouter);
+app.use("/speak", speakRouter);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

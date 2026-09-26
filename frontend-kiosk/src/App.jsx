@@ -5,10 +5,11 @@ import RescanLookup from "./screens/RescanLookup.jsx";
 import Capture from "./screens/Capture.jsx";
 import Message from "./screens/Message.jsx";
 import DemoControls from "./components/DemoControls.jsx";
+import MuteToggle from "./components/MuteToggle.jsx";
 import { checkIn, getBaseline, getPatient, submitReading, NotFoundError } from "./api/client.js";
 import { acquireVitals } from "./lib/capture.js";
 import { isAgentAvailable } from "./lib/presage.js";
-import { playPrompt } from "./lib/voice.js";
+import { isMuted, playPrompt, setMuted, unlockAudio } from "./lib/voice.js";
 
 const AUTO_RETURN_MS = 8000;
 
@@ -25,6 +26,7 @@ export default function App() {
   const [manualOpen, setManualOpen] = useState(false);
   // true once the Presage agent is found unreachable/failing and we fall back to mock vitals
   const [demoMode, setDemoMode] = useState(false);
+  const [muted, setMutedState] = useState(isMuted);
   // Bumped whenever a flow starts or is cancelled, so stale async steps bail out.
   const flowId = useRef(0);
 
@@ -40,7 +42,20 @@ export default function App() {
     });
   }, []);
 
-  // Voice prompts hook in here (see lib/voice.js) -- one prompt per screen.
+  // Browsers block audio until a user gesture. Capture phase runs before the
+  // Welcome screen's own click handler, so audio is unlocked by the time the
+  // tap moves to the check-in screen and its welcome line plays. `click` (not
+  // pointerdown) because a touch pointerdown doesn't count as a gesture.
+  useEffect(() => {
+    window.addEventListener("click", unlockAudio, true);
+    window.addEventListener("keydown", unlockAudio, true);
+    return () => {
+      window.removeEventListener("click", unlockAudio, true);
+      window.removeEventListener("keydown", unlockAudio, true);
+    };
+  }, []);
+
+  // One voice line per screen (lib/voice.js); stops the previous line first.
   useEffect(() => {
     playPrompt(screen.name, screen);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,6 +200,13 @@ export default function App() {
   return (
     <>
       {renderScreen()}
+      <MuteToggle
+        muted={muted}
+        onToggle={() => {
+          setMuted(!muted);
+          setMutedState(!muted);
+        }}
+      />
       <DemoControls
         armed={armed}
         demoMode={demoMode}
