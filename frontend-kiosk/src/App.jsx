@@ -8,7 +8,7 @@ import DemoControls from "./components/DemoControls.jsx";
 import MuteToggle from "./components/MuteToggle.jsx";
 import AnnouncementBanner from "./components/AnnouncementBanner.jsx";
 import { checkIn, getBaseline, getPatient, submitReading, triggerRecheck, NotFoundError } from "./api/client.js";
-import { acquireVitals } from "./lib/capture.js";
+import { acquireVitals, CaptureCancelledError } from "./lib/capture.js";
 import { isAgentAvailable } from "./lib/presage.js";
 import { useAnnouncer } from "./lib/useAnnouncer.js";
 import { isMuted, playPrompt, setMuted, unlockAudio } from "./lib/voice.js";
@@ -35,6 +35,10 @@ export default function App() {
   const { banner, pollNow } = useAnnouncer(screen.name === "capture");
   // Bumped whenever a flow starts or is cancelled, so stale async steps bail out.
   const flowId = useRef(0);
+  // AbortController for whichever capture is currently in flight, so the
+  // Cancel button can actually interrupt acquireVitals() instead of only
+  // changing which screen is shown while the capture keeps running underneath.
+  const captureAbortRef = useRef(null);
 
   const setArmed = useCallback((next) => {
     armedRef.current = typeof next === "function" ? next(armedRef.current) : next;
@@ -104,6 +108,16 @@ export default function App() {
     setScreen({ name: "welcome" });
   }
 
+  // Cancel button on the capture screen. Aborts whichever capture is
+  // actually in flight (manual/elevated/mock sleep, or the Presage agent
+  // request -- acquireVitals sorts out which) before navigating home, so
+  // the backend camera/SDK is told to stop instead of continuing to run
+  // while the kiosk has already moved on to another screen.
+  function handleCancelCapture() {
+    captureAbortRef.current?.abort();
+    goHome();
+  }
+
   function showFrontDesk(err) {
     console.error("[kiosk] sending patient to front desk:", err);
     setScreen({ name: "frontDesk" });
@@ -111,11 +125,14 @@ export default function App() {
 
   // Runs capture -> POST /reading -> confirmation. Driven from event
   // handlers (not effects) so StrictMode can't run a capture twice.
-  async function runCapture(id, { mode, patient, baseline }) {
+  async function runCapture(id, { mode, patient, baseline, createPatient = false }) {
     const override = armedRef.current;
     // Manual values apply to any capture; the elevated demo only makes sense on a rescan.
     const useOverride = override && (override.type === "manual" || mode === "rescan") ? override : null;
     if (useOverride) setArmed(null);
+
+    const controller = new AbortController();
+    captureAbortRef.current = controller;
 
     setScreen({ name: "capture", mode, patient, durationMs: null, startedAt: null, saving: false });
 
@@ -123,6 +140,7 @@ export default function App() {
       mode,
       baseline,
       override: useOverride,
+      signal: controller.signal,
       onStart: (durationMs) => {
         if (flowId.current === id) setScreen((s) => ({ ...s, durationMs, startedAt: Date.now() }));
       },
@@ -130,22 +148,27 @@ export default function App() {
     if (flowId.current !== id) return;
 
     if (source === "presage" || source === "mock") setDemoMode(source === "mock");
-    console.info(`[kiosk] ${mode} vitals for patient ${patient.id} (source: ${source})`, vitals);
+    console.info(`[kiosk] ${mode} vitals captured (source: ${source})`, vitals);
 
     setScreen((s) => ({ ...s, saving: true }));
-    await submitReading({ patient_id: patient.id, ...vitals, is_baseline: mode === "baseline" });
+    const savedPatient = createPatient ? await checkIn(patient) : patient;
     if (flowId.current !== id) return;
 
-    setScreen({ name: mode === "baseline" ? "checkedIn" : "thanks", patient });
+    console.info(`[kiosk] saving ${mode} reading for patient ${savedPatient.id}`);
+    await submitReading({ patient_id: savedPatient.id, ...vitals, is_baseline: mode === "baseline" });
+    if (flowId.current !== id) return;
+
+    setScreen({ name: mode === "baseline" ? "checkedIn" : "thanks", patient: savedPatient });
   }
 
   async function handleCheckIn(form) {
     const id = ++flowId.current;
     try {
-      const patient = await checkIn(form);
-      if (flowId.current !== id) return;
-      await runCapture(id, { mode: "baseline", patient, baseline: null });
+      await runCapture(id, { mode: "baseline", patient: form, baseline: null, createPatient: true });
     } catch (err) {
+      // User hit Cancel mid-capture -- handleCancelCapture already sent them
+      // home, so there's nothing left to do here.
+      if (err instanceof CaptureCancelledError) return;
       if (flowId.current === id) showFrontDesk(err);
     }
   }
@@ -167,6 +190,7 @@ export default function App() {
       if (flowId.current !== id) return;
       await runCapture(id, { mode: "rescan", patient, baseline });
     } catch (err) {
+      if (err instanceof CaptureCancelledError) return;
       if (flowId.current === id) showFrontDesk(err);
     }
   }
@@ -178,7 +202,7 @@ export default function App() {
       case "rescan":
         return <RescanLookup onSubmit={handleRescan} onCancel={goHome} />;
       case "capture":
-        return <Capture {...screen} onCancel={goHome} />;
+        return <Capture {...screen} onCancel={handleCancelCapture} />;
       case "checkedIn":
         return (
           <Message

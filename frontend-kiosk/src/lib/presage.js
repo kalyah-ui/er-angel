@@ -10,7 +10,12 @@
  *            face_asymmetry_score (e.g. 0.007, stroke screening) are null
  *            when the agent couldn't measure them
  *     409 -> a capture is already in progress
+ *     499 -> capture was cancelled via POST /cancel (not a real failure)
  *     500 -> { error, detail }
+ *   POST /cancel  -> { ok: true, wasCapturing: boolean }
+ *     Tells the agent to stop an in-progress capture (stops the SDK,
+ *     resolves the pending /capture request with 499). No-op if nothing
+ *     is running. Never throws from this client's perspective.
  *
  * The agent owns the camera, so the kiosk must not open it too.
  */
@@ -27,6 +32,7 @@ const CAPTURE_TIMEOUT_BUFFER_MS = 15000;
 const CAPTURE_TIMEOUT_MS = CAPTURE_DURATION_MS + CAPTURE_TIMEOUT_BUFFER_MS;
 const HEALTH_TIMEOUT_MS = 1500;
 const STATUS_TIMEOUT_MS = 1500;
+const CANCEL_TIMEOUT_MS = 1500;
 
 function toNumber(value) {
   const n = typeof value === "string" ? Number(value) : value;
@@ -57,19 +63,75 @@ export async function isAgentAvailable() {
   }
 }
 
-/** Real capture from the agent. Throws on unreachable/timeout/busy/empty result. */
-export async function captureFromAgent() {
-  const res = await fetch(`${AGENT_URL}/capture`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ duration_ms: CAPTURE_DURATION_MS }),
-    signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS),
-  });
+// Thrown by captureFromAgent when the capture was cancelled (either by the
+// caller's own signal firing, or because the backend replied 499 after a
+// POST /cancel). Callers should treat this as "the user backed out," not as
+// a capture failure -- e.g. don't route it to a front-desk/error screen.
+export class CaptureCancelledError extends Error {
+  constructor() {
+    super("capture cancelled");
+    this.name = "CaptureCancelledError";
+  }
+}
+
+/**
+ * Real capture from the agent. Throws CaptureCancelledError if `signal` is
+ * aborted (by the caller) or the agent itself reports the capture was
+ * cancelled (409/499 style). Throws a plain Error on other failures
+ * (unreachable/timeout/busy/empty result).
+ *
+ * `signal` is optional -- pass the same AbortController you plan to use for
+ * cancelCapture() so the fetch itself can be torn down immediately instead
+ * of waiting on the backend's response.
+ */
+export async function captureFromAgent({ signal } = {}) {
+  const timeoutSignal = AbortSignal.timeout(CAPTURE_TIMEOUT_MS);
+  const combinedSignal =
+    signal && typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timeoutSignal]) : signal || timeoutSignal;
+
+  let res;
+  try {
+    res = await fetch(`${AGENT_URL}/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ duration_ms: CAPTURE_DURATION_MS }),
+      signal: combinedSignal,
+    });
+  } catch (err) {
+    // AbortSignal.any isn't available in every runtime this may target, so
+    // if only the plain `signal` was passed and it fired, the fetch throws
+    // an AbortError here rather than resolving with a response at all.
+    if (signal?.aborted) throw new CaptureCancelledError();
+    throw err;
+  }
+
+  if (res.status === 499) throw new CaptureCancelledError();
   if (!res.ok) throw new Error(`agent /capture returned HTTP ${res.status}`);
 
   const vitals = normalizeVitals(await res.json());
   if (vitals.heart_rate == null) throw new Error("agent returned no heart rate (no samples decoded)");
   return vitals;
+}
+
+/**
+ * Tells the agent to stop an in-progress capture. Fire-and-forget from the
+ * caller's perspective -- never throws, since the frontend should proceed
+ * with navigating away regardless of whether this network call succeeds.
+ * Pair this with aborting the same `signal` passed to captureFromAgent so
+ * the fetch there doesn't hang around waiting for the 499.
+ */
+export async function cancelCapture() {
+  try {
+    const res = await fetch(`${AGENT_URL}/cancel`, {
+      method: "POST",
+      signal: AbortSignal.timeout(CANCEL_TIMEOUT_MS),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return !!data.wasCapturing;
+  } catch {
+    return false;
+  }
 }
 
 const jitter = (spread) => (Math.random() * 2 - 1) * spread;

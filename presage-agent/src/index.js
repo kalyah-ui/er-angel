@@ -27,6 +27,12 @@ const sdk = new SmartSpectraSDK({
 let collecting = false;
 let samples = [];
 
+// Set by POST /cancel while a capture is in flight. Checked inside
+// runCapture's loop so the SDK is actually stopped and the in-flight
+// /capture request resolves promptly, instead of the frontend merely
+// navigating away while the agent keeps the camera running underneath.
+let cancelRequested = false;
+
 // Bad validation events (e.g. kChestNotVisible, kFaceTooLow) fire
 // repeatedly (~every 30ms) while a problem persists, but the SDK appears
 // to NEVER emit an explicit "all clear" / kOk event once framing becomes
@@ -189,9 +195,21 @@ function isFramingBlocking() {
   return Date.now() - lastBadValidation.receivedAt < FRAMING_STALE_MS;
 }
 
+// Thrown when a client explicitly cancels an in-progress capture, so the
+// /capture route can respond with a distinct status instead of treating
+// it as a real capture failure (which would send the patient to the front
+// desk via showFrontDesk on the frontend).
+class CaptureCancelledError extends Error {
+  constructor() {
+    super("capture cancelled");
+    this.name = "CaptureCancelledError";
+  }
+}
+
 async function runCapture(durationMs) {
   samples = [];
   collecting = true;
+  cancelRequested = false;
   lastBadValidation = { code: null, hint: null, receivedAt: null };
   goodElapsedMs = 0;
   targetMs = durationMs;
@@ -201,8 +219,14 @@ async function runCapture(durationMs) {
   const wallClockStart = Date.now();
   let lastTick = wallClockStart;
   const maxWallClockMs = durationMs * MAX_WALL_CLOCK_MULTIPLIER;
+  let cancelled = false;
 
   while (goodElapsedMs < durationMs) {
+    if (cancelRequested) {
+      console.log("[presage-agent] capture cancelled by client request.");
+      cancelled = true;
+      break;
+    }
     if (Date.now() - wallClockStart > maxWallClockMs) {
       console.warn(
         "[presage-agent] capture exceeded max wall-clock time waiting for good framing -- stopping with partial data."
@@ -230,6 +254,11 @@ async function runCapture(durationMs) {
   }
 
   collecting = false;
+  cancelRequested = false;
+
+  if (cancelled) {
+    throw new CaptureCancelledError();
+  }
 
   if (samples.length) {
     scanForRateFields(samples);
@@ -296,11 +325,33 @@ app.post("/capture", async (req, res) => {
     const result = await runCapture(durationMs);
     res.json(result);
   } catch (err) {
-    console.error("[presage-agent] capture failed:", err.message);
-    res.status(500).json({ error: "capture failed", detail: err.message });
+    if (err instanceof CaptureCancelledError) {
+      // Not a failure -- the client asked us to stop. 499 (nonstandard but
+      // widely used for "client closed/cancelled request") so the kiosk can
+      // tell this apart from a real capture error and skip the front-desk
+      // fallback screen.
+      console.log("[presage-agent] capture cancelled, responding 499.");
+      res.status(499).json({ error: "cancelled" });
+    } else {
+      console.error("[presage-agent] capture failed:", err.message);
+      res.status(500).json({ error: "capture failed", detail: err.message });
+    }
   } finally {
     captureInFlight = false;
   }
+});
+
+// Called by the kiosk when the patient hits Cancel mid-capture. Doesn't
+// stop the SDK directly here -- just flags the running runCapture loop,
+// which stops the SDK itself on its next tick (within TICK_MS) and makes
+// the pending /capture request resolve with a 499. Safe to call even if
+// nothing is in flight (captureInFlight false), in which case it's a no-op.
+app.post("/cancel", (req, res) => {
+  if (!captureInFlight) {
+    return res.json({ ok: true, wasCapturing: false });
+  }
+  cancelRequested = true;
+  res.json({ ok: true, wasCapturing: true });
 });
 
 app.listen(PORT, () => {
