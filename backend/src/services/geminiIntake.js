@@ -1,4 +1,4 @@
-import { callGemini, hasGeminiKey } from "./geminiClient.js";
+import { callGemini, geminiDisabledReason } from "./geminiClient.js";
 
 const SYSTEM_PROMPT = `You are a friendly ER check-in assistant. Ask the
 patient 2-3 short questions about their symptoms (e.g. pain, dizziness,
@@ -12,7 +12,7 @@ Do not diagnose. Keep questions brief and non-alarming.`;
  * extend to multi-turn chat history if time allows.
  */
 export async function runIntakeTurn(conversationHistory) {
-  if (!hasGeminiKey()) {
+  if (geminiDisabledReason()) {
     return { reply: "What brought you in today?", done: false };
   }
 

@@ -1,4 +1,4 @@
-import { callGemini, hasGeminiKey } from "./geminiClient.js";
+import { callGemini, geminiDisabledReason } from "./geminiClient.js";
 
 const SYSTEM_PROMPT = `Turn a clinical risk assessment into ONE short,
 plain-English line a busy ER nurse can scan in under 2 seconds. Style
@@ -12,7 +12,11 @@ markdown, quotes, or a preamble -- output only the single line.`;
 export async function generateAlertLine(riskJson, patientLabel) {
   const fallbackLine = `${patientLabel}: ${riskJson.delta_summary}`;
 
-  if (!hasGeminiKey()) return fallbackLine;
+  const disabled = geminiDisabledReason();
+  if (disabled) {
+    console.warn(`[geminiAlertText] FALLBACK: ${disabled} -- using templated line`);
+    return fallbackLine;
+  }
 
   try {
     const prompt = `Patient label: ${patientLabel}\nRisk assessment: ${JSON.stringify(riskJson)}`;

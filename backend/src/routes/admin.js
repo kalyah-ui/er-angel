@@ -5,9 +5,8 @@ import { seedDemo } from "../logic/demoSeed.js";
 export const adminRouter = Router();
 
 // POST /admin/reset -- wipes all data. Body: { seed: true } to also load the
-// demo patients (see logic/demoSeed.js). Seeding runs real Gemini calls, so
-// it takes a few seconds.
-adminRouter.post("/reset", async (req, res) => {
+// demo patients with pre-written alerts (see logic/demoSeed.js; no Gemini calls).
+adminRouter.post("/reset", (req, res) => {
   db.exec(`
     DELETE FROM alerts;
     DELETE FROM readings;
@@ -20,8 +19,7 @@ adminRouter.post("/reset", async (req, res) => {
   }
 
   try {
-    const patients = await seedDemo();
-    res.json({ ok: true, seeded: true, patients });
+    res.json({ ok: true, seeded: true, patients: seedDemo() });
   } catch (err) {
     console.error("[admin] demo seed failed:", err);
     res.status(500).json({ error: "demo seed failed", detail: err.message });

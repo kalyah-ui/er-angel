@@ -1,4 +1,4 @@
-import { callGemini, hasGeminiKey } from "./geminiClient.js";
+import { callGemini, geminiDisabledReason } from "./geminiClient.js";
 import { fallbackRisk } from "../logic/riskThresholds.js";
 
 const RISK_LEVELS = ["low", "medium", "high"];
@@ -22,8 +22,9 @@ this is a screening aid, not a replacement for clinical judgment.`;
  * @param {number} params.minutesElapsed
  */
 export async function classifyRisk({ baseline, current, chiefComplaint, minutesElapsed }) {
-  if (!hasGeminiKey()) {
-    console.warn("[geminiRisk] FALLBACK: no GEMINI_API_KEY set -- using rule-based thresholds");
+  const disabled = geminiDisabledReason();
+  if (disabled) {
+    console.warn(`[geminiRisk] FALLBACK: ${disabled} -- using rule-based thresholds`);
     return fallbackRisk(baseline, current);
   }
 

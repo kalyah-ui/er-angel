@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { db } from "../db/db.js";
-import { recordReading } from "../services/recordReading.js";
+import { insertReading, insertAlert } from "../services/recordReading.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOCK_PATH = path.join(__dirname, "../../../test_output.json");
@@ -23,6 +23,8 @@ function mockRescan() {
   }
 }
 
+// Alert text is pre-written (in the style Gemini produces) so Reset is
+// instant and costs no Gemini quota. Only real kiosk rescans call Gemini.
 function demoPatients() {
   return [
     {
@@ -31,12 +33,26 @@ function demoPatients() {
       // Baseline 72/14 is the one described in test_output.json's delta_summary.
       baseline: { heart_rate: 72, breathing_rate: 14, stress_score: null },
       rescan: mockRescan(),
+      alert: (label) => ({
+        risk_level: "high",
+        delta_summary:
+          "Heart rate increased from 72 to 110 bpm (+38, new tachycardia); respiratory rate stable (14 to 15 breaths/min).",
+        reason_text: `${label}: HR up 38 bpm with chest tightness, get ECG and reassess immediately.`,
+        recommended_action: "Immediate clinical re-evaluation and 12-lead ECG for new tachycardia with chest tightness.",
+      }),
     },
     {
       name: "Jordan Smith",
       chief_complaint: "Twisted ankle, pain worsening",
       baseline: { heart_rate: 70, breathing_rate: 14, stress_score: null },
       rescan: { heart_rate: 88, breathing_rate: 19, stress_score: null },
+      alert: (label) => ({
+        risk_level: "medium",
+        delta_summary:
+          "Heart rate up 18 bpm (70 to 88) and respiratory rate up 5 breaths/min (14 to 19), consistent with worsening pain.",
+        reason_text: `${label}: HR up 18 bpm, RR up 5 since triage, reassess pain.`,
+        recommended_action: "Reassess pain level and consider analgesia; recheck vitals in 15 minutes.",
+      }),
     },
     {
       name: "Sam Rivera",
@@ -47,27 +63,19 @@ function demoPatients() {
 }
 
 /**
- * Inserts the demo patients and their baselines, then runs each rescan
- * through the real reading pipeline (Gemini risk + alert line) in parallel.
- * Returns a short summary per patient.
+ * Inserts the demo patients, baselines, rescans and pre-written alerts in
+ * one transaction. Makes no Gemini calls. Returns a short summary per patient.
  */
-export async function seedDemo() {
+export const seedDemo = db.transaction(() => {
   const insertPatient = db.prepare("INSERT INTO patients (name, chief_complaint) VALUES (?, ?)");
 
-  // Check everyone in first so patient ids/triage order are deterministic.
-  const seeded = [];
-  for (const p of demoPatients()) {
-    const info = insertPatient.run(p.name, p.chief_complaint);
-    const patient = db.prepare("SELECT * FROM patients WHERE id = ?").get(info.lastInsertRowid);
-    await recordReading(patient, { ...p.baseline, is_baseline: true });
-    seeded.push({ patient, rescan: p.rescan });
-  }
+  return demoPatients().map((p) => {
+    const patientId = insertPatient.run(p.name, p.chief_complaint).lastInsertRowid;
+    insertReading(patientId, { ...p.baseline, is_baseline: true });
+    if (!p.rescan) return { name: p.name, risk_level: null, reason_text: null };
 
-  return Promise.all(
-    seeded.map(async ({ patient, rescan }) => {
-      if (!rescan) return { name: patient.name, risk_level: null, reason_text: null };
-      const { alert } = await recordReading(patient, { ...rescan, is_baseline: false });
-      return { name: patient.name, risk_level: alert.risk_level, reason_text: alert.reason_text };
-    })
-  );
-}
+    const reading = insertReading(patientId, { ...p.rescan, is_baseline: false });
+    const alert = insertAlert(patientId, reading.id, p.alert(`Patient ${patientId}`));
+    return { name: p.name, risk_level: alert.risk_level, reason_text: alert.reason_text };
+  });
+});
