@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db/db.js";
 import { callToTriage, lastTriageCallAt } from "../services/calls.js";
-import { recheckFields } from "../services/recheck.js";
+import { recheckFields, triggerRecheck } from "../services/recheck.js";
 
 export const patientsRouter = Router();
 
@@ -40,6 +40,13 @@ patientsRouter.post("/:id/call", (req, res) => {
   const patient = db.prepare("SELECT * FROM patients WHERE id = ?").get(req.params.id);
   if (!patient) return res.status(404).json({ error: "patient not found" });
   res.status(201).json(callToTriage(patient.id));
+});
+
+// POST /patients/:id/recheck -- kiosk demo key R: send a recheck reminder now.
+patientsRouter.post("/:id/recheck", (req, res) => {
+  const patient = db.prepare("SELECT * FROM patients WHERE id = ?").get(req.params.id);
+  if (!patient) return res.status(404).json({ error: "patient not found" });
+  res.status(201).json(triggerRecheck(patient.id));
 });
 
 patientsRouter.get("/:id", (req, res) => {

@@ -7,7 +7,7 @@ import Message from "./screens/Message.jsx";
 import DemoControls from "./components/DemoControls.jsx";
 import MuteToggle from "./components/MuteToggle.jsx";
 import AnnouncementBanner from "./components/AnnouncementBanner.jsx";
-import { checkIn, getBaseline, getPatient, submitReading, NotFoundError } from "./api/client.js";
+import { checkIn, getBaseline, getPatient, submitReading, triggerRecheck, NotFoundError } from "./api/client.js";
 import { acquireVitals } from "./lib/capture.js";
 import { isAgentAvailable } from "./lib/presage.js";
 import { useAnnouncer } from "./lib/useAnnouncer.js";
@@ -26,12 +26,13 @@ export default function App() {
   const [armed, setArmedState] = useState(null);
   const armedRef = useRef(null);
   const [manualOpen, setManualOpen] = useState(false);
+  const [recheckOpen, setRecheckOpen] = useState(false);
   // true once the Presage agent is found unreachable/failing and we fall back to mock vitals
   const [demoMode, setDemoMode] = useState(false);
   const [muted, setMutedState] = useState(isMuted);
   // PA announcements (nurse triage calls, recheck reminders). Shown during a
   // capture too, but only spoken once it's over.
-  const banner = useAnnouncer(screen.name === "capture");
+  const { banner, pollNow } = useAnnouncer(screen.name === "capture");
   // Bumped whenever a flow starts or is cancelled, so stale async steps bail out.
   const flowId = useRef(0);
 
@@ -66,22 +67,37 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen.name]);
 
-  // Hidden demo controls: D arms elevated vitals for the next rescan, M opens manual entry.
+  // Hidden demo controls: D arms elevated vitals for the next rescan, M opens
+  // manual entry, R opens the recheck-reminder prompt. Esc closes panels.
   useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === "Escape") return setManualOpen(false);
+      if (e.key === "Escape") {
+        setManualOpen(false);
+        setRecheckOpen(false);
+        return;
+      }
       // Don't hijack letters typed into the check-in form.
       if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
       const key = e.key.toLowerCase();
       if (key === "d") {
         setArmed((prev) => (prev?.type === "elevated" ? null : { type: "elevated" }));
       } else if (key === "m") {
+        setRecheckOpen(false);
         setManualOpen((open) => !open);
+      } else if (key === "r") {
+        setManualOpen(false);
+        setRecheckOpen((open) => !open);
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [setArmed]);
+
+  // Demo key R: remind a patient right now, exactly like a timed reminder.
+  async function handleTriggerRecheck(patientNumber) {
+    await triggerRecheck(patientNumber); // NotFoundError / BackendUnavailableError -> shown in the prompt
+    pollNow();
+  }
 
   function goHome() {
     flowId.current++;
@@ -219,6 +235,9 @@ export default function App() {
         manualOpen={manualOpen}
         onArm={setArmed}
         onCloseManual={() => setManualOpen(false)}
+        recheckOpen={recheckOpen}
+        onTriggerRecheck={handleTriggerRecheck}
+        onCloseRecheck={() => setRecheckOpen(false)}
       />
     </>
   );

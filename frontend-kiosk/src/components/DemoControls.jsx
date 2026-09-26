@@ -1,12 +1,77 @@
 import { useState } from "react";
+import { NotFoundError } from "../api/client.js";
+
+const HINT = "D: elevated rescan · M: manual vitals · R: recheck reminder · Esc: close";
+
+/** Demo key R: type a patient number -> they get a recheck announcement now. */
+function RecheckPrompt({ onTrigger, onClose }) {
+  const [number, setNumber] = useState("");
+  const [error, setError] = useState(null);
+  const [sending, setSending] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    const trimmed = number.trim();
+    if (!/^\d+$/.test(trimmed) || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await onTrigger(trimmed);
+      onClose();
+    } catch (err) {
+      setError(err instanceof NotFoundError ? `No patient #${trimmed}` : "Backend unreachable");
+      setSending(false);
+    }
+  }
+
+  return (
+    <form className="manual-panel" onSubmit={submit} onClick={(e) => e.stopPropagation()}>
+      <p className="manual-title">Recheck reminder — now</p>
+      <div className="manual-fields">
+        <label>
+          Patient #
+          <input
+            value={number}
+            onChange={(e) => {
+              setNumber(e.target.value);
+              setError(null);
+            }}
+            inputMode="numeric"
+            autoFocus
+          />
+        </label>
+      </div>
+      {error && <p className="manual-error">{error}</p>}
+      <div className="manual-actions">
+        <button type="submit" disabled={!/^\d+$/.test(number.trim()) || sending}>
+          {sending ? "Sending…" : "Announce"}
+        </button>
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <p className="manual-hint">{HINT}</p>
+    </form>
+  );
+}
 
 /**
  * Presenter-only controls. Nothing here is visible to a judge except:
- *  - a tiny dot (bottom-right) while a demo override is armed
+ *  - tiny dots (bottom-right): a demo override is armed (D red, M blue),
+ *    or the R prompt is open (green)
  *  - a small "demo mode" tag (bottom-left) when the Presage agent is unavailable
- * The manual-entry panel opens with the M key.
+ * The M key opens manual vitals entry, R the recheck-reminder prompt.
  */
-export default function DemoControls({ armed, demoMode, manualOpen, onArm, onCloseManual }) {
+export default function DemoControls({
+  armed,
+  demoMode,
+  manualOpen,
+  onArm,
+  onCloseManual,
+  recheckOpen,
+  onTriggerRecheck,
+  onCloseRecheck,
+}) {
   const [hr, setHr] = useState("");
   const [rr, setRr] = useState("");
 
@@ -31,6 +96,7 @@ export default function DemoControls({ armed, demoMode, manualOpen, onArm, onClo
   return (
     <>
       {armed && <span className={`demo-dot demo-dot-${armed.type}`} title={dotTitle} aria-hidden="true" />}
+      {recheckOpen && <span className="demo-dot demo-dot-recheck" title="R: recheck reminder prompt open" aria-hidden="true" />}
       {demoMode && <span className="demo-mode-tag">demo mode</span>}
 
       {manualOpen && (
@@ -59,9 +125,11 @@ export default function DemoControls({ armed, demoMode, manualOpen, onArm, onClo
               Close
             </button>
           </div>
-          <p className="manual-hint">D: elevated rescan · M: this panel · Esc: close</p>
+          <p className="manual-hint">{HINT}</p>
         </form>
       )}
+
+      {recheckOpen && <RecheckPrompt onTrigger={onTriggerRecheck} onClose={onCloseRecheck} />}
     </>
   );
 }

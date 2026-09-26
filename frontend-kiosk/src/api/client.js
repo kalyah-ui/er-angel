@@ -46,6 +46,11 @@ export function fetchPendingCalls() {
   return request("/calls/pending", { timeoutMs: 4000 });
 }
 
+// Demo key R: remind this patient to recheck now. Throws NotFoundError for an unknown number.
+export function triggerRecheck(patientNumber) {
+  return request(`/patients/${encodeURIComponent(patientNumber)}/recheck`, { method: "POST", timeoutMs: 4000 });
+}
+
 export function markCallAnnounced(id) {
   return request(`/calls/${encodeURIComponent(id)}/announced`, { method: "POST", timeoutMs: 4000 });
 }

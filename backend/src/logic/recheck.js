@@ -2,6 +2,7 @@
  * Automatic recheck reminders -- all the timing rules, as pure functions.
  * Every duration is multiplied by RECHECK_TIME_SCALE (backend/.env, default
  * 1); e.g. 0.07 turns 15/20/30 min into ~1-2 min for a live demo.
+ * RECHECK_AUTO=false (backend/.env) turns off automatic reminders entirely.
  */
 export const RECHECK_CONFIG = {
   // How long after their latest reading a patient is due for a recheck, by latest risk level.
@@ -54,7 +55,8 @@ export function recheckStatus({ latestReadingAt, riskLevel, remindersSince, call
 
   return {
     next_recheck_at: nextRecheckAt,
-    recheck_due: now >= nextRecheckAt,
+    // A reminder already went out (timed, or triggered by the kiosk's R key) = due.
+    recheck_due: now >= nextRecheckAt || reminders_sent > 0,
     // Every reminder went unanswered for a full gap.
     missed_recheck: reminders_sent >= maxReminders && gapPassed,
     remind: reminders_sent === 0 ? now >= nextRecheckAt : reminders_sent < maxReminders && gapPassed,

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS patients (
   name TEXT NOT NULL,
   chief_complaint TEXT,
   triage_notes TEXT,           -- optional, filled by Gemini intake chatbot (stretch)
+  is_demo INTEGER NOT NULL DEFAULT 0,  -- 1 = seeded by Reset demo: never gets automatic recheck reminders
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

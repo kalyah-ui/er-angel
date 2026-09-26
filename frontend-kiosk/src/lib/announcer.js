@@ -25,7 +25,7 @@ function byPriority(a, b) {
  *
  * @param {() => boolean} isCapturing  true while the capture screen is up
  * @param {(banner: null | { id, type, text }) => void} onBanner
- * @returns {() => void} stop
+ * @returns {{ stop: () => void, pollNow: () => void }} pollNow checks for new calls right away
  */
 export function startAnnouncer({ isCapturing, onBanner, pollMs = POLL_MS, bannerMinMs = BANNER_MIN_MS, gapMs = GAP_BETWEEN_MS }) {
   let stopped = false;
@@ -104,9 +104,12 @@ export function startAnnouncer({ isCapturing, onBanner, pollMs = POLL_MS, banner
   const pollTimer = setInterval(poll, pollMs);
   run();
 
-  return () => {
-    stopped = true;
-    clearInterval(pollTimer);
-    if (speaking) stopVoice(); // don't leave an announcement talking after we stop
+  return {
+    stop() {
+      stopped = true;
+      clearInterval(pollTimer);
+      if (speaking) stopVoice(); // don't leave an announcement talking after we stop
+    },
+    pollNow: () => poll(),
   };
 }

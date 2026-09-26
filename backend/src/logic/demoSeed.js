@@ -3,6 +3,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { db } from "../db/db.js";
 import { insertReading, insertAlert } from "../services/recordReading.js";
+import { createCall, markAnnounced } from "../services/calls.js";
+import { toSqliteUtc } from "./sqliteTime.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MOCK_PATH = path.join(__dirname, "../../../test_output.json");
@@ -58,23 +60,39 @@ function demoPatients() {
       name: "Sam Rivera",
       chief_complaint: "Sore throat",
       baseline: { heart_rate: 76, breathing_rate: 15, stress_score: null },
+      // Checked in an hour ago and ignored both recheck reminders, so the
+      // dashboard shows "Missed recheck" straight after a reset. The
+      // reminders are pre-marked announced: the kiosk never plays them.
+      checkedInMinutesAgo: 60,
+      ignoredRemindersMinutesAgo: [25, 20],
     },
   ];
 }
 
+const minutesBefore = (now, minutes) => new Date(now.getTime() - minutes * 60000);
+
 /**
  * Inserts the demo patients, baselines, rescans and pre-written alerts in
  * one transaction. Makes no Gemini calls. Returns a short summary per patient.
+ *
+ * Demo patients are flagged is_demo: they never get automatic recheck
+ * reminders (only the kiosk's R key reminds them), and their recheck
+ * countdown runs in real time, so Alex/Jordan show "Next recheck in 15/20 min"
+ * and Sam shows "Missed recheck" -- predictable for a pitch.
  */
-export const seedDemo = db.transaction(() => {
-  const insertPatient = db.prepare("INSERT INTO patients (name, chief_complaint) VALUES (?, ?)");
+export const seedDemo = db.transaction((now = new Date()) => {
+  const insertPatient = db.prepare("INSERT INTO patients (name, chief_complaint, is_demo, created_at) VALUES (?, ?, 1, ?)");
 
   return demoPatients().map((p) => {
-    const patientId = insertPatient.run(p.name, p.chief_complaint).lastInsertRowid;
-    insertReading(patientId, { ...p.baseline, is_baseline: true });
+    const checkedInAt = minutesBefore(now, p.checkedInMinutesAgo ?? 0);
+    const patientId = insertPatient.run(p.name, p.chief_complaint, toSqliteUtc(checkedInAt)).lastInsertRowid;
+    insertReading(patientId, { ...p.baseline, is_baseline: true }, checkedInAt);
+    for (const minutesAgo of p.ignoredRemindersMinutesAgo ?? []) {
+      markAnnounced(createCall(patientId, "recheck", minutesBefore(now, minutesAgo)).id);
+    }
     if (!p.rescan) return { name: p.name, risk_level: null, reason_text: null };
 
-    const reading = insertReading(patientId, { ...p.rescan, is_baseline: false });
+    const reading = insertReading(patientId, { ...p.rescan, is_baseline: false }, now);
     const alert = insertAlert(patientId, reading.id, p.alert(`Patient ${patientId}`));
     return { name: p.name, risk_level: alert.risk_level, reason_text: alert.reason_text };
   });

@@ -340,3 +340,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .announcement { animation: none; }
 }
+
+/* R key: recheck-reminder prompt (shares the manual panel's look) */
+.demo-dot-recheck { background: var(--calm); right: 24px; }
+.manual-error { margin: 8px 0 0; color: var(--danger); font-weight: 600; }
