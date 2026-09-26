@@ -17,6 +17,30 @@
 {$SITE_ADDRESS} {
 	encode zstd gzip
 
+	# ---- Access log, redacted. One JSON line per request with method, path,
+	# status, duration, client IP, basic-auth username, plus the Origin and
+	# whether an X-Kiosk-Token was sent (yes/no). ALL request headers are
+	# dropped, so the token, Authorization and cookies are never written.
+	# Read it with scripts/logs.ps1.
+	map {http.request.header.X-Kiosk-Token} {kiosk_token_sent} {
+		~.+ yes
+		default no
+	}
+	log_append origin {http.request.header.Origin}
+	log_append kiosk_token_sent {kiosk_token_sent}
+	log {
+		output file {$ACCESS_LOG:/data/logs/access.log} {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format filter {
+			request>headers delete
+			request>tls delete
+			resp_headers delete
+		}
+	}
+
 	@needsLogin {
 		not {
 			path /api/*

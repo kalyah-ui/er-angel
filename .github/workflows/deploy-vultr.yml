@@ -1,0 +1,47 @@
+# Deploys to the Vultr server on every push to the vultr branch (and on demand
+# from the Actions tab). The SSH key in DEPLOY_SSH_KEY is locked on the server
+# to deploy/remote-deploy.sh (see deploy/authorize-ci-key.sh), so it can only
+# trigger a redeploy -- it can't open a shell.
+#
+# Secrets (repo Settings -> Secrets and variables -> Actions):
+#   DEPLOY_SSH_KEY      private half of the deploy-only ed25519 key
+#   DEPLOY_HOST         server IP
+#   DEPLOY_KNOWN_HOSTS  the server's SSH host key line (pins the server)
+# Until they're set, the job skips with a warning instead of failing.
+name: Deploy to Vultr
+
+on:
+  push:
+    branches: [vultr]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vultr
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Deploy over SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
+            echo "::warning::Deploy secrets aren't configured -- skipping deploy."
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The server ignores this command and runs deploy/remote-deploy.sh,
+          # which pulls, rebuilds, and exits non-zero unless /api/health is ok.
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes "root@$DEPLOY_HOST" deploy
+          rm -f ~/.ssh/deploy_key
