@@ -14,7 +14,7 @@
         "reading_id": 2,
         "risk_level": "high",
         "delta_summary": "Heart rate increased significantly from 72 to 110 bpm (tachycardia). Respiratory rate remains stable (14 to 15 breaths/min).",
-        "reason_text ": "Patient 1: HR up 38 bpm with chest tightness, get ECG and reassess immediately.",
+        "reason_text": "Patient 1: HR up 38 bpm with chest tightness, get ECG and reassess immediately.",
         "recommended_action": "Immediate clinical re-evaluation and ECG due to new-onset tachycardia accompanying chest tightness.",
         "acknowledged": 0,
         "created_at": "2026-09-26 03:25:09"
