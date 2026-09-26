@@ -9,7 +9,8 @@ set -euo pipefail
 ENV_FILE="${1:-/opt/er-angel/.env}"
 umask 077
 
-new=$(tr -d '\r' | grep -E '^S3_(ENDPOINT|BUCKET|ACCESS_KEY_ID|SECRET_ACCESS_KEY|REGION)=.+' || true)
+# Strip CRs and a UTF-8 byte-order mark (Windows PowerShell adds one when piping).
+new=$(tr -d '\r' | sed '1s/^\xEF\xBB\xBF//' | grep -E '^S3_(ENDPOINT|BUCKET|ACCESS_KEY_ID|SECRET_ACCESS_KEY|REGION)=.+' || true)
 for key in S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
   grep -q "^$key=" <<<"$new" || { echo "Missing $key on stdin -- nothing changed." >&2; exit 1; }
 done

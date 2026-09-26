@@ -4,6 +4,8 @@
 #
 #   cd infra; .\push-storage-keys.ps1
 $ErrorActionPreference = "Stop"
+# Pipe plain UTF-8 to ssh: PowerShell's default here prepends a byte-order mark.
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false
 
 $tf = (Get-Command terraform -ErrorAction SilentlyContinue).Source
 if (-not $tf) {
