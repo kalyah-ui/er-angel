@@ -1,88 +1,131 @@
-/**
- * Facial asymmetry scoring, inspired by the "F" (Face) in the FAST stroke
- * screening protocol (Face, Arms, Speech, Time). This computes a
- * lightweight symmetry score from face landmarks -- NOT a diagnosis, a
- * supplementary signal for a nurse to look at.
- *
- * IMPORTANT: this is meant to be compared against a PATIENT'S OWN baseline,
- * not an absolute population threshold. Everyone has some natural facial
- * asymmetry; what matters clinically is a SUDDEN CHANGE from someone's own
- * resting face. See services/geminiRisk.js on the backend for how this
- * baseline-vs-current comparison is wired in, same pattern as heart rate.
- *
- * Landmark indices below use the standard MediaPipe Face Mesh numbering
- * (468 base points + 10 iris points = 478, matching Presage's "478 facial
- * landmark coordinates" description). These specific index numbers are
- * widely documented for MediaPipe but have NOT been visually confirmed
- * against Presage's own landmark reference image
- * (https://storage.googleapis.com/mediapipe-assets/documentation/mediapipe_face_landmark_fullsize.png).
- * Cross-check them against that image before trusting the output, and
- * adjust the constants below if needed.
- */
+// Landmark indices have been visually cross-checked against the
+// MediaPipe Face Mesh reference map (478-point model).
+//
+// 33  = right outer eye corner
+// 263 = left outer eye corner
+// 61  = right mouth corner
+// 291 = left mouth corner
+//
+// These landmarks form symmetric bilateral pairs suitable for
+// head-tilt-normalized facial asymmetry measurements.
 
 const LANDMARK = {
-  // Mouth corners -- the primary FAST-relevant points (facial droop shows
-  // up here first and most visibly).
-  MOUTH_RIGHT: 61,
-  MOUTH_LEFT: 291,
-
-  // Eye outer corners -- used to build a stable reference line so head
-  // tilt doesn't get misread as facial asymmetry.
+  // Outer eye corners
   EYE_RIGHT_OUTER: 33,
   EYE_LEFT_OUTER: 263,
+
+  // Mouth landmarks (right side)
+  MOUTH_RIGHT_OUTER: 61,
+  MOUTH_RIGHT_UPPER: 40,
+  MOUTH_RIGHT_LOWER: 91,
+
+  // Mouth landmarks (left side)
+  MOUTH_LEFT_OUTER: 291,
+  MOUTH_LEFT_UPPER: 270,
+  MOUTH_LEFT_LOWER: 321,
+
+  // Approximate facial center
+  NOSE_TIP: 1,
 };
 
 /**
- * @param {Array<{x: number, y: number}>} landmarks  raw landmark array, index-aligned to MediaPipe numbering
- * @returns {number|null} asymmetry score, roughly 0 (symmetric) to higher values (more asymmetric),
- *   normalized by inter-eye distance so it's comparable across different distances from the camera.
- *   Returns null if required landmarks are missing/low quality.
+ * @param {Array<{x:number,y:number}>} landmarks
+ * @returns {number|null}
  */
 export function computeAsymmetryScore(landmarks) {
-  if (!Array.isArray(landmarks) || landmarks.length < 292) return null;
+  if (!Array.isArray(landmarks) || landmarks.length < 322) {
+    return null;
+  }
 
-  const mouthR = landmarks[LANDMARK.MOUTH_RIGHT];
-  const mouthL = landmarks[LANDMARK.MOUTH_LEFT];
   const eyeR = landmarks[LANDMARK.EYE_RIGHT_OUTER];
   const eyeL = landmarks[LANDMARK.EYE_LEFT_OUTER];
 
-  if (!mouthR || !mouthL || !eyeR || !eyeL) return null;
+  const nose = landmarks[LANDMARK.NOSE_TIP];
 
-  // 1. Build a reference line from the two outer eye corners and find the
-  //    angle needed to "level" the face -- corrects for head tilt so a
-  //    tilted head isn't mistaken for facial droop.
+  const rightPoints = [
+    landmarks[LANDMARK.MOUTH_RIGHT_OUTER],
+    landmarks[LANDMARK.MOUTH_RIGHT_UPPER],
+    landmarks[LANDMARK.MOUTH_RIGHT_LOWER],
+  ];
+
+  const leftPoints = [
+    landmarks[LANDMARK.MOUTH_LEFT_OUTER],
+    landmarks[LANDMARK.MOUTH_LEFT_UPPER],
+    landmarks[LANDMARK.MOUTH_LEFT_LOWER],
+  ];
+
+  if (
+    !eyeR ||
+    !eyeL ||
+    !nose ||
+    rightPoints.some((p) => !p) ||
+    leftPoints.some((p) => !p)
+  ) {
+    return null;
+  }
+
   const eyeDx = eyeL.x - eyeR.x;
   const eyeDy = eyeL.y - eyeR.y;
-  const tiltAngle = Math.atan2(eyeDy, eyeDx);
 
   const interEyeDist = Math.hypot(eyeDx, eyeDy);
-  if (interEyeDist === 0) return null; // degenerate/invalid frame
 
-  // 2. Rotate the mouth corner points by -tiltAngle around the eye
-  //    midpoint, so the eye line becomes perfectly horizontal.
+  if (interEyeDist < 1e-6) {
+    return null;
+  }
+
+  const tiltAngle = Math.atan2(eyeDy, eyeDx);
+
   const midX = (eyeR.x + eyeL.x) / 2;
   const midY = (eyeR.y + eyeL.y) / 2;
+
+  const cos = Math.cos(-tiltAngle);
+  const sin = Math.sin(-tiltAngle);
 
   function rotate(point) {
     const dx = point.x - midX;
     const dy = point.y - midY;
-    const cos = Math.cos(-tiltAngle);
-    const sin = Math.sin(-tiltAngle);
+
     return {
       x: dx * cos - dy * sin,
       y: dx * sin + dy * cos,
     };
   }
 
-  const mouthRRot = rotate(mouthR);
-  const mouthLRot = rotate(mouthL);
+  function averagePoint(points) {
+    return {
+      x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+      y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
+    };
+  }
 
-  // 3. After leveling, a symmetric face has both mouth corners at
-  //    roughly the same height (y). Facial droop on one side shows up as
-  //    a vertical offset between them. Normalize by inter-eye distance so
-  //    the score doesn't depend on how close the patient is to the camera.
-  const verticalDelta = Math.abs(mouthRRot.y - mouthLRot.y);
-  const score = verticalDelta / interEyeDist;
+  const mouthRight = averagePoint(rightPoints);
+  const mouthLeft = averagePoint(leftPoints);
+
+  const mouthRightRot = rotate(mouthRight);
+  const mouthLeftRot = rotate(mouthLeft);
+  const noseRot = rotate(nose);
+
+  // FAST-style droop indicator
+  const verticalAsymmetry =
+    Math.abs(mouthRightRot.y - mouthLeftRot.y) /
+    interEyeDist;
+
+  // Compare both sides against the facial midline
+  const rightDistanceFromMidline =
+    Math.abs(mouthRightRot.x - noseRot.x);
+
+  const leftDistanceFromMidline =
+    Math.abs(mouthLeftRot.x - noseRot.x);
+
+  const horizontalAsymmetry =
+    Math.abs(
+      rightDistanceFromMidline - leftDistanceFromMidline
+    ) / interEyeDist;
+
+  // Vertical droop is usually the clinically stronger signal
+  const score =
+    verticalAsymmetry * 0.7 +
+    horizontalAsymmetry * 0.3;
 
   return score;
 }
@@ -93,11 +136,29 @@ export function computeAsymmetryScore(landmarks) {
  * weren't detected.
  * @param {Array<Array<{x:number,y:number}>>} landmarkSamples
  */
+/**
+ * @param {Array<Array<{x:number,y:number}>>} landmarkSamples
+ * @returns {number|null}
+ */
 export function averageAsymmetryScore(landmarkSamples) {
+  if (!Array.isArray(landmarkSamples)) {
+    return null;
+  }
+
   const scores = landmarkSamples
     .map(computeAsymmetryScore)
-    .filter((s) => typeof s === "number" && !Number.isNaN(s));
+    .filter(
+      (score) =>
+        typeof score === "number" &&
+        Number.isFinite(score)
+    );
 
-  if (!scores.length) return null;
-  return scores.reduce((sum, s) => sum + s, 0) / scores.length;
+  if (scores.length === 0) {
+    return null;
+  }
+
+  return (
+    scores.reduce((sum, score) => sum + score, 0) /
+    scores.length
+  );
 }
