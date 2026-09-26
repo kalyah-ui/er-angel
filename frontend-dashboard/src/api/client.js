@@ -18,6 +18,16 @@ export async function acknowledgeAlert(id) {
   return res.json();
 }
 
+export async function resetDemo(seed = true) {
+  const res = await fetch(`${BASE_URL}/admin/reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seed }),
+  });
+  if (!res.ok) throw new Error("failed to reset demo data");
+  return res.json();
+}
+
 /**
  * Simple polling helper -- good enough for a hackathon demo, no websockets
  * needed. Call the returned stop() function on unmount.
