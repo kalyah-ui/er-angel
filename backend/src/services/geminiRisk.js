@@ -1,8 +1,7 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { callGemini, geminiDisabledReason } from "./geminiClient.js";
 import { fallbackRisk } from "../logic/riskThresholds.js";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const RISK_LEVELS = ["low", "medium", "high"];
 
 const SYSTEM_PROMPT = `You are a clinical triage support assistant helping an
 ER waiting room monitor patients between nurse checks. Compare a patient's
@@ -23,33 +22,34 @@ this is a screening aid, not a replacement for clinical judgment.`;
  * @param {number} params.minutesElapsed
  */
 export async function classifyRisk({ baseline, current, chiefComplaint, minutesElapsed }) {
-  if (!process.env.GEMINI_API_KEY) {
-    console.warn("[geminiRisk] no API key set, using fallback logic");
+  const disabled = geminiDisabledReason();
+  if (disabled) {
+    console.warn(`[geminiRisk] FALLBACK: ${disabled} -- using rule-based thresholds`);
     return fallbackRisk(baseline, current);
   }
 
+  const prompt = JSON.stringify({
+    baseline,
+    current,
+    chief_complaint: chiefComplaint,
+    minutes_elapsed: minutesElapsed,
+  });
+
   try {
-    const model = genAI.getGenerativeModel({
-      model: MODEL,
-      systemInstruction: SYSTEM_PROMPT,
-      generationConfig: { responseMimeType: "application/json" },
-    });
-
-    const prompt = JSON.stringify({
-      baseline,
-      current,
-      chief_complaint: chiefComplaint,
-      minutes_elapsed: minutesElapsed,
-    });
-
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const parsed = JSON.parse(text);
-
-    if (!parsed.risk_level) throw new Error("Malformed Gemini response");
-    return parsed;
+    return await callGemini(
+      "geminiRisk",
+      { systemInstruction: SYSTEM_PROMPT, generationConfig: { responseMimeType: "application/json" } },
+      async (model) => {
+        const result = await model.generateContent(prompt);
+        // A malformed response throws here, which counts as a retryable failure.
+        const parsed = JSON.parse(result.response.text());
+        const risk_level = String(parsed.risk_level ?? "").toLowerCase();
+        if (!RISK_LEVELS.includes(risk_level)) throw new Error("Malformed Gemini response");
+        return { ...parsed, risk_level };
+      }
+    );
   } catch (err) {
-    console.error("[geminiRisk] falling back to rule-based logic:", err.message);
+    console.error(`[geminiRisk] FALLBACK: all Gemini attempts failed (${err.message}) -- using rule-based thresholds`);
     return fallbackRisk(baseline, current);
   }
 }

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS patients (
   name TEXT NOT NULL,
   chief_complaint TEXT,
   triage_notes TEXT,           -- optional, filled by Gemini intake chatbot (stretch)
+  is_demo INTEGER NOT NULL DEFAULT 0,  -- 1 = seeded by Reset demo: never gets automatic recheck reminders
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -34,3 +35,16 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE INDEX IF NOT EXISTS idx_readings_patient ON readings(patient_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_patient ON alerts(patient_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_ack ON alerts(acknowledged);
+
+-- Announcements for the kiosk PA: a nurse calling a patient to triage, or an
+-- automatic recheck reminder. The kiosk polls unannounced calls.
+CREATE TABLE IF NOT EXISTS calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  patient_id INTEGER NOT NULL REFERENCES patients(id),
+  type TEXT NOT NULL,           -- 'triage' | 'recheck'
+  announced INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_calls_patient ON calls(patient_id);
+CREATE INDEX IF NOT EXISTS idx_calls_announced ON calls(announced);
