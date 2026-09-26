@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { synthesize, MAX_TEXT_LENGTH, VoiceUnavailableError } from "../services/elevenLabsTts.js";
+import { synthesizeWithSource, MAX_TEXT_LENGTH, VoiceUnavailableError } from "../services/elevenLabsTts.js";
 
 export const speakRouter = Router();
 
-// POST /speak { text } -> audio/mpeg
+// POST /speak { text } -> audio/mpeg, with X-Voice-Source: memory|disk|bucket|elevenlabs
 // 503 { error, reason } when voice is off or ElevenLabs fails; the kiosk then
 // falls back to the browser's speechSynthesis. The API key never leaves the backend.
 speakRouter.post("/", async (req, res) => {
@@ -14,8 +14,13 @@ speakRouter.post("/", async (req, res) => {
   }
 
   try {
-    const audio = await synthesize(text);
-    res.set({ "Content-Type": "audio/mpeg", "Content-Length": audio.length, "Cache-Control": "public, max-age=86400" });
+    const { audio, source } = await synthesizeWithSource(text);
+    res.set({
+      "Content-Type": "audio/mpeg",
+      "Content-Length": audio.length,
+      "Cache-Control": "public, max-age=86400",
+      "X-Voice-Source": source,
+    });
     res.send(audio);
   } catch (err) {
     if (!(err instanceof VoiceUnavailableError)) console.error("[voice] unexpected error:", err);

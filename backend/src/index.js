@@ -12,6 +12,7 @@ import { speakRouter } from "./routes/speak.js";
 import { callsRouter } from "./routes/calls.js";
 import { recheckAutoEnabled, startRecheckScheduler } from "./services/recheck.js";
 import { recheckTimeScale } from "./logic/recheck.js";
+import { startBackupScheduler } from "./services/dbBackup.js";
 
 // CORS_ORIGINS (comma-separated) restricts which browser origins may call the
 // API cross-origin -- in production just the kiosk laptop. Unset = allow all
@@ -40,6 +41,7 @@ const server = app.listen(PORT, () => {
   console.log(`[er-angel-backend] listening on port ${PORT}`);
   console.log(`[cors] ${corsOrigins.length ? `allowed origins: ${corsOrigins.join(", ")}` : "all origins allowed (CORS_ORIGINS unset)"}`);
   startRecheckScheduler();
+  startBackupScheduler();
   console.log(
     recheckAutoEnabled()
       ? `[recheck] automatic reminders on, RECHECK_TIME_SCALE=${recheckTimeScale()}`

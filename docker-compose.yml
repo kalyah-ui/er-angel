@@ -7,10 +7,18 @@
 # Local development doesn't use this file -- keep using `npm run dev`.
 name: er-angel
 
+# Docker's default json-file driver never rotates: cap each container's logs.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   backend:
     build: ./backend
     restart: unless-stopped
+    logging: *logging
     env_file: .env
     volumes:
       - backend-data:/app/data # SQLite db + ElevenLabs voice cache
@@ -24,6 +32,7 @@ services:
       args:
         VITE_API_URL: /api
     restart: unless-stopped
+    logging: *logging
     depends_on:
       backend:
         condition: service_healthy
@@ -37,8 +46,10 @@ services:
       DASHBOARD_PASSWORD_HASH: ${DASHBOARD_PASSWORD_HASH:?set DASHBOARD_PASSWORD_HASH in .env}
       KIOSK_TOKEN: ${KIOSK_TOKEN:?set KIOSK_TOKEN in .env}
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data # HTTPS certificates -- keep, or Caddy re-requests them
+      # The folder, not the single file: git pull replaces files, and a
+      # single-file bind mount would keep serving the old Caddyfile.
+      - ./deploy:/etc/caddy:ro
+      - caddy-data:/data # HTTPS certificates (keep, or Caddy re-requests them) + logs/access.log
       - caddy-config:/config
 
 volumes:

@@ -1,0 +1,2 @@
+# Shell scripts run on Linux (the server): always LF, whatever the local git settings.
+*.sh text eol=lf
