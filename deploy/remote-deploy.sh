@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Server side of a deploy: pull the branch the server is on, rebuild, reload
-# Caddy, and wait for https://<SITE_ADDRESS>/api/health. On failure, prints
-# the recent backend/web logs and exits non-zero.
+# Server side of a deploy: check out and pull main, rebuild, reload Caddy,
+# and wait for https://<SITE_ADDRESS>/api/health. On failure, prints the
+# recent backend/web logs and exits non-zero.
 #
 # Run by scripts/deploy.ps1 (over SSH) and by GitHub Actions, whose key is
 # locked to this script (see deploy/authorize-ci-key.sh). Takes no arguments
@@ -9,17 +9,22 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 
+# The branch the server runs. Also switches a server still on another branch.
+DEPLOY_BRANCH=main
+
 if [ "${1:-}" != "--pulled" ]; then
   # One deploy at a time (laptop + GitHub Actions could overlap). Taken once
   # here; the open, locked fd 9 is inherited by the exec below.
   exec 9>/tmp/er-angel-deploy.lock
   flock -w 600 9 || { echo "DEPLOY FAILED: another deploy has been running for 10 min" >&2; exit 1; }
 
-  branch=$(git branch --show-current)
-  before=$(git rev-parse --short HEAD)
-  git fetch -q origin "$branch"
-  git merge -q --ff-only "origin/$branch" || { echo "DEPLOY FAILED: can't fast-forward $branch (local changes on the server?)" >&2; exit 1; }
-  echo "==> $branch: $before -> $(git rev-parse --short HEAD)"
+  before="$(git branch --show-current)@$(git rev-parse --short HEAD)"
+  git fetch -q origin "$DEPLOY_BRANCH"
+  if [ "$(git branch --show-current)" != "$DEPLOY_BRANCH" ]; then
+    git checkout -q "$DEPLOY_BRANCH" || { echo "DEPLOY FAILED: can't switch to $DEPLOY_BRANCH (local changes on the server?)" >&2; exit 1; }
+  fi
+  git merge -q --ff-only "origin/$DEPLOY_BRANCH" || { echo "DEPLOY FAILED: can't fast-forward $DEPLOY_BRANCH (local changes on the server?)" >&2; exit 1; }
+  echo "==> $before -> $DEPLOY_BRANCH@$(git rev-parse --short HEAD)"
   # Continue with the version of this script that was just pulled.
   exec bash "$0" --pulled
 fi
