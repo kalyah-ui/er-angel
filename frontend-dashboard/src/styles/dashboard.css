@@ -1,0 +1,82 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+.dashboard {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+header h1 { font-size: 1.8rem; margin-bottom: 4px; }
+h2 { font-size: 1.2rem; margin: 32px 0 12px; color: #94a3b8; }
+.error { color: #f87171; font-weight: 600; }
+.empty { color: #64748b; font-style: italic; }
+
+.patient-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.patient-card {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 16px;
+  border-left: 6px solid #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.patient-card.risk-low { border-left-color: #22c55e; }
+.patient-card.risk-medium { border-left-color: #eab308; }
+.patient-card.risk-high { border-left-color: #ef4444; }
+
+.patient-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.risk-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.risk-pill-low { background: #14532d; color: #bbf7d0; }
+.risk-pill-medium { background: #713f12; color: #fef08a; }
+.risk-pill-high { background: #7f1d1d; color: #fecaca; }
+
+.complaint { color: #94a3b8; font-size: 0.9rem; margin: 0; }
+.vitals { font-size: 0.85rem; color: #cbd5e1; margin: 0; }
+.alert-line { font-size: 0.85rem; font-weight: 600; margin: 4px 0 0; }
+
+.alert-feed {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.alert-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #1e293b;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border-left: 6px solid #475569;
+}
+.alert-item.risk-high { border-left-color: #ef4444; }
+.alert-item.risk-medium { border-left-color: #eab308; }
+.alert-item.risk-low { border-left-color: #22c55e; }
+.alert-item button {
+  background: #334155;
+  color: #e2e8f0;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
