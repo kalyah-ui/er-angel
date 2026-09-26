@@ -35,3 +35,5 @@ Thumbs.db
 *.tfvars
 !*.tfvars.example
 crash.log
+# Terraform plan files embed resource details and may contain secrets
+*.tfplan
