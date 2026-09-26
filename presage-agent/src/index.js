@@ -8,23 +8,9 @@ import {
   faceMetrics,
   edaMetrics,
   decodeMetrics,
+  ValidationCode,
 } from "@smartspectra/node-sdk";
 import { averageAsymmetryScore } from "./faceAsymmetry.js";
-
-/**
- * WaitWatch Presage Capture Agent
- * ---------------------------------
- * This is a SEPARATE small process from the main backend. It must run on
- * the actual kiosk device (the tablet/laptop with the physical webcam),
- * NOT on your cloud server -- `sdk.useCamera()` grabs whatever camera is
- * attached to the machine this process runs on.
- *
- * The kiosk browser calls this agent's local HTTP endpoint (default
- * http://localhost:4600/capture) to get a vitals reading, then forwards
- * those numbers to the main backend's existing POST /reading endpoint
- * exactly as before. This agent never talks to the main backend directly
- * -- it just answers "what are this person's vitals right now."
- */
 
 const PORT = process.env.PORT || 4600;
 
@@ -33,14 +19,6 @@ if (!process.env.PRESAGE_API_KEY) {
   process.exit(1);
 }
 
-// Breathing rate needs the chest/torso visible in frame -- position your
-// camera further back (or angled down) so your torso is in shot, not just
-// your face, or you'll see "Place more of the chest in view" validation
-// warnings again.
-// edaMetrics (electrodermal activity / skin conductance) was NOT in the
-// documentation originally reviewed for this project -- it showed up as
-// an export in the SDK package itself, so treat its exact shape as
-// unconfirmed until the diagnostic scan below shows real data.
 const sdk = new SmartSpectraSDK({
   apiKey: process.env.PRESAGE_API_KEY,
   requestedMetrics: [...cardioMetrics, ...breathingMetrics, ...faceMetrics, ...edaMetrics],
@@ -49,12 +27,58 @@ const sdk = new SmartSpectraSDK({
 let collecting = false;
 let samples = [];
 
+// Bad validation events (e.g. kChestNotVisible, kFaceTooLow) fire
+// repeatedly (~every 30ms) while a problem persists, but the SDK appears
+// to NEVER emit an explicit "all clear" / kOk event once framing becomes
+// good again -- it just stops emitting entirely. So instead of trusting
+// the last-seen code forever (which froze the countdown permanently once
+// a single bad event fired), we track WHEN the last bad event arrived and
+// treat framing as good again once that event goes stale (i.e. no new bad
+// event has landed in FRAMING_STALE_MS).
+let lastBadValidation = { code: null, hint: null, receivedAt: null };
+
+// TUNING: measured via the diagnostic "validation gap" log below. If your
+// real repeat interval during a sustained problem is consistently under
+// ~100ms, 150ms is safe. If you see occasional jitter up to 120-150ms,
+// stay at 200ms or a bit higher -- you want at least one full jittery gap
+// of margin, or the UI will flicker between blocked/resumed.
+const FRAMING_STALE_MS = 200;
+
+// Accumulated milliseconds of GOOD framing toward the capture target, vs.
+// targetMs (the requested duration). Wall-clock time keeps running during
+// bad framing, but doesn't count toward the target, so a patient with poor
+// framing for the first 10s of a 30s capture still ends up with a full 30s
+// of usable data -- just takes longer in real time.
+let goodElapsedMs = 0;
+let targetMs = 0;
+
 sdk.on("processingStatus", (status) => {
   console.log("[presage-agent] processing status:", status);
 });
 
 sdk.on("validationStatus", (code, ts, hint) => {
+  const now = Date.now();
+
+  // DIAGNOSTIC: logs the real gap between consecutive bad events so you
+  // can confirm/tune FRAMING_STALE_MS against actual data. Safe to delete
+  // once you're confident in the threshold.
+  if (code !== ValidationCode.kOk && lastBadValidation.receivedAt != null) {
+    console.log(
+      "[presage-agent] validation gap:",
+      now - lastBadValidation.receivedAt,
+      "ms since last bad event"
+    );
+  }
+
   console.log("[presage-agent] validation:", code, hint, "at", ts, "µs");
+
+  if (code !== ValidationCode.kOk) {
+    lastBadValidation = { code, hint: hint || null, receivedAt: now };
+  } else {
+    // In case the SDK *does* sometimes send kOk explicitly, honor it
+    // immediately rather than waiting out the staleness window.
+    lastBadValidation = { code: null, hint: null, receivedAt: null };
+  }
 });
 
 sdk.on("metrics", (buf, ts) => {
@@ -69,18 +93,6 @@ sdk.on("error", (code, message, retryable) => {
 
 sdk.useCamera();
 
-/**
- * DIAGNOSTIC MODE: the decoded metrics stream sends partial updates --
- * some samples are just a raw waveform point (e.g. {breathing:{upperTrace:
- * [...]}}), not a computed rate. The actual rate/confidence value likely
- * arrives in a DIFFERENT sample later in the stream, once the SDK has
- * accumulated enough signal (rPPG needs the full window, not sample 1).
- *
- * Rather than guess field names again, we scan every sample's full JSON
- * for the substrings "rate" or "pulse" and log any hit. Run a real
- * ~20-30s capture and check the agent terminal for a line starting with
- * "[presage-agent] FOUND rate-like field" -- that tells us the real path.
- */
 function scanForRateFields(samples) {
   const seenKeys = new Set();
   samples.forEach((s) => collectKeys(s, "", seenKeys));
@@ -91,16 +103,9 @@ function scanForRateFields(samples) {
     if (/rate|pulse|bpm/i.test(json)) {
       console.log(`[presage-agent] FOUND rate-like field in sample ${i}:`, json);
     }
-    // Once faceMetrics is added to requestedMetrics above, this will help
-    // find the real landmark field path -- look for a "FOUND face-like
-    // field" line and note whether it's an array of {x,y} points.
     if (/landmark|face/i.test(json)) {
-      // Truncate to keep the log readable -- landmark arrays are long (478 points).
       console.log(`[presage-agent] FOUND face-like field in sample ${i}:`, json.slice(0, 500) + "...");
     }
-    // eda/electrodermal/conductance -- shape is completely unknown, this
-    // SDK export wasn't in the docs we reviewed. Look for a "FOUND eda-like
-    // field" line and inspect its structure before writing extraction logic.
     if (/eda|electrodermal|conductance|\bscr\b|\bscl\b/i.test(json)) {
       console.log(`[presage-agent] FOUND eda-like field in sample ${i}:`, json.slice(0, 500) + "...");
     }
@@ -116,28 +121,16 @@ function collectKeys(obj, prefix, out) {
   }
 }
 
-// CONFIRMED from live diagnostic output: pulseRate is an ARRAY of
-// { value, stable, confidence, timestamp } entries, not a plain number.
-// Only trust entries marked stable -- early samples during the first few
-// seconds of a capture are often unstable while the algorithm locks on.
 function extractPulseRate(m) {
   const entries = m?.cardio?.pulseRate;
   if (!Array.isArray(entries) || entries.length === 0) return null;
   const stableEntries = entries.filter((e) => e.stable);
   const best = stableEntries.length ? stableEntries : entries;
-  // average the value across all entries in this sample (usually just one)
   const vals = best.map((e) => e.value).filter((v) => typeof v === "number");
   if (!vals.length) return null;
   return vals.reduce((sum, v) => sum + v, 0) / vals.length;
 }
 
-// UNCONFIRMED GUESS -- pulseRate turned out to live at m.cardio.pulseRate
-// as an array of {value, stable, confidence, timestamp}, so breathing is
-// likely the same shape at m.breathing.breathingRate, but this has NOT
-// been verified against real data yet. Run a capture now that
-// breathingMetrics is requested above, check the terminal for a line like
-// "FOUND rate-like field in sample N: {...}", and fix this path to match
-// whatever it actually shows -- the same way extractPulseRate got fixed.
 function extractBreathingRate(m) {
   const entries = m?.breathing?.breathingRate ?? m?.breathing?.rate;
   if (!Array.isArray(entries) || entries.length === 0) return null;
@@ -148,12 +141,6 @@ function extractBreathingRate(m) {
   return vals.reduce((sum, v) => sum + v, 0) / vals.length;
 }
 
-// CONFIRMED from live diagnostic output: m.face.landmarks is an array of
-// { value: [...478 {x,y} points...] } entries (usually one per sample),
-// NOT a flat array of points itself -- the points are one level deeper,
-// under .value. Coordinates are pixel values (e.g. x:937,y:587), not
-// normalized 0-1, but that's fine -- computeAsymmetryScore normalizes by
-// inter-eye distance so absolute pixel scale doesn't matter.
 function extractLandmarks(m) {
   const entries = m?.face?.landmarks;
   if (!Array.isArray(entries) || entries.length === 0) return null;
@@ -161,14 +148,8 @@ function extractLandmarks(m) {
   return Array.isArray(first?.value) ? first.value : null;
 }
 
-// UNCONFIRMED -- edaMetrics wasn't in the docs we reviewed, so this is a
-// blind guess at the shape based on the pattern every other metric
-// category has followed so far (an array of {value, ...} entries, or a
-// nested {value: [...]} wrapper like landmarks). DO NOT trust this until
-// you've seen a real "FOUND eda-like field" log line and confirmed the
-// actual path -- same process as pulseRate and landmarks.
 function extractEda(m) {
-  const entries = m?.eda?.trace ?? m?.eda?.level ?? m?.eda?.value ?? m?.eda?.scr ?? m?.eda?.tonic;
+  const entries = m?.eda?.level ?? m?.eda?.value ?? m?.eda?.scr ?? m?.eda?.tonic;
   if (!Array.isArray(entries) || entries.length === 0) return null;
   const vals = entries.map((e) => (typeof e === "number" ? e : e?.value)).filter((v) => typeof v === "number");
   if (!vals.length) return null;
@@ -181,12 +162,61 @@ function average(values) {
   return nums.reduce((sum, v) => sum + v, 0) / nums.length;
 }
 
+const TICK_MS = 200;
+// Safety cap so a capture doesn't hang forever if framing never improves --
+// stop anyway after 3x the requested duration and use whatever was collected.
+const MAX_WALL_CLOCK_MULTIPLIER = 3;
+
+// CONFIRMED authoritative list, via:
+//   node -e "import('@smartspectra/node-sdk').then(m => console.log(m.ValidationCode))"
+// {
+//   kOk: 0, kNoFaceFound: 1, kMultipleFacesFound: 2, kFaceNotCentered: 3,
+//   kFaceSizeOutOfRange: 4, kTooDark: 5, kTooBright: 6, kChestNotVisible: 7,
+//   kCameraTuning: 10, kFrameRateTooLow: 11, kExcessiveMotion: 12,
+//   kFaceTooClose: 13, kFaceTooFar: 14, kFaceTooHigh: 15, kFaceTooLow: 16,
+//   kFaceNotForward: 17
+// }
+// kOk (0) is the only "everything is fine" state -- its accompanying hint
+// text (e.g. "Hold still and record.") is just reassurance, not a warning.
+// Every other code is a real problem that should pause progress.
+//
+// Framing is blocking if we've seen a bad event that hasn't gone stale
+// yet -- see lastBadValidation / FRAMING_STALE_MS above for why this
+// replaced the old "trust the last code forever" approach, which caused
+// the countdown to freeze permanently after a single bad event.
+function isFramingBlocking() {
+  if (lastBadValidation.code == null) return false;
+  return Date.now() - lastBadValidation.receivedAt < FRAMING_STALE_MS;
+}
+
 async function runCapture(durationMs) {
   samples = [];
   collecting = true;
+  lastBadValidation = { code: null, hint: null, receivedAt: null };
+  goodElapsedMs = 0;
+  targetMs = durationMs;
 
   await sdk.start();
-  await new Promise((resolve) => setTimeout(resolve, durationMs));
+
+  const wallClockStart = Date.now();
+  let lastTick = wallClockStart;
+  const maxWallClockMs = durationMs * MAX_WALL_CLOCK_MULTIPLIER;
+
+  while (goodElapsedMs < durationMs) {
+    if (Date.now() - wallClockStart > maxWallClockMs) {
+      console.warn(
+        "[presage-agent] capture exceeded max wall-clock time waiting for good framing -- stopping with partial data."
+      );
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, TICK_MS));
+    const now = Date.now();
+    const tickElapsed = now - lastTick;
+    lastTick = now;
+
+    const framingOk = !isFramingBlocking();
+    if (framingOk) goodElapsedMs += tickElapsed;
+  }
 
   try {
     await sdk.stopAsync();
@@ -220,8 +250,6 @@ async function runCapture(durationMs) {
     ? averageAsymmetryScore(landmarkSamples)
     : null;
 
-  // stress_score is now sourced from EDA once extractEda's field path is
-  // confirmed against real diagnostic output -- will be null until then.
   const stress_score = average(samples.map(extractEda));
 
   return {
@@ -238,6 +266,21 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/health", (req, res) => res.json({ ok: true }));
+
+app.get("/status", (req, res) => {
+  const blocking = isFramingBlocking();
+  res.json({
+    collecting,
+    // Only surface the code/hint while actually blocking -- once the
+    // staleness window clears, don't keep echoing stale problem text
+    // down to the kiosk UI.
+    code: blocking ? lastBadValidation.code : null,
+    hint: blocking ? lastBadValidation.hint : null,
+    blocking,
+    goodElapsedMs,
+    targetMs,
+  });
+});
 
 let captureInFlight = false;
 

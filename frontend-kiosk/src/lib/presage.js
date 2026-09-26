@@ -26,6 +26,7 @@ export const CAPTURE_DURATION_MS = CAPTURE_SECONDS * 1000;
 const CAPTURE_TIMEOUT_BUFFER_MS = 15000;
 const CAPTURE_TIMEOUT_MS = CAPTURE_DURATION_MS + CAPTURE_TIMEOUT_BUFFER_MS;
 const HEALTH_TIMEOUT_MS = 1500;
+const STATUS_TIMEOUT_MS = 1500;
 
 function toNumber(value) {
   const n = typeof value === "string" ? Number(value) : value;
@@ -94,4 +95,20 @@ export function elevatedVitals(baseline) {
     breathing_rate: (toNumber(baseline?.breathing_rate) ?? 14) + 5,
     stress_score: null,
   });
+}
+
+/**
+ * Polled by the capture UI while a capture is running, to show a live
+ * framing hint (e.g. "Place more of the chest in view") from the agent's
+ * validationStatus stream. Never throws -- a missed poll just means no
+ * hint update this tick, not a broken capture.
+ */
+export async function fetchStatus() {
+  try {
+    const res = await fetch(`${AGENT_URL}/status`, { signal: AbortSignal.timeout(STATUS_TIMEOUT_MS) });
+    if (!res.ok) return null;
+    return res.json(); // { collecting, code, hint, timestamp }
+  } catch {
+    return null;
+  }
 }
