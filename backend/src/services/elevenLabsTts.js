@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { isFlagDisabled } from "../logic/envFlags.js";
+import { objectStore } from "./objectStorage.js";
 
 // ---- Voice settings: change these to try a different voice/model ----------
 // "Sarah" -- premade ElevenLabs voice (soft, warm, reassuring); premade voices
@@ -21,8 +22,8 @@ export const MAX_TEXT_LENGTH = 400;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = path.join(__dirname, "../../data/voice-cache");
 
-// text -> Promise<Buffer>. Holds finished audio and in-flight generations, so
-// concurrent requests for the same line share a single ElevenLabs call.
+// text -> Promise<{ audio, source }>. Holds finished audio and in-flight
+// lookups, so concurrent requests for the same line share one ElevenLabs call.
 const memoryCache = new Map();
 
 export class VoiceUnavailableError extends Error {}
@@ -34,13 +35,44 @@ export function voiceDisabledReason() {
 }
 
 // Voice/model are part of the key, so changing either regenerates audio.
-function cacheFile(text) {
+function cacheName(text) {
   const hash = crypto
     .createHash("sha256")
     .update(`${VOICE_ID}|${MODEL_ID}|${OUTPUT_FORMAT}|${text}`)
     .digest("hex")
     .slice(0, 32);
-  return path.join(CACHE_DIR, `${hash}.mp3`);
+  return `${hash}.mp3`;
+}
+
+function cacheFile(text) {
+  return path.join(CACHE_DIR, cacheName(text));
+}
+
+// Same file name in the bucket, under voice-cache/.
+const bucketKey = (text) => `voice-cache/${cacheName(text)}`;
+
+async function writeDisk(text, audio) {
+  await fs.promises.mkdir(CACHE_DIR, { recursive: true });
+  await fs.promises.writeFile(cacheFile(text), audio);
+}
+
+// Bucket problems never break speech: a failed read falls through to
+// ElevenLabs, a failed upload just means the next server regenerates it.
+async function readBucket(store, text) {
+  try {
+    return await store.get(bucketKey(text));
+  } catch (err) {
+    console.warn(`[voice] bucket read failed (${err.message}) -- trying ElevenLabs`);
+    return null;
+  }
+}
+
+async function uploadBucket(store, text, audio) {
+  try {
+    await store.put(bucketKey(text), audio, "audio/mpeg");
+  } catch (err) {
+    console.warn(`[voice] bucket upload failed (${err.message}) -- kept on disk only`);
+  }
 }
 
 export function isCachedOnDisk(text) {
@@ -83,33 +115,51 @@ async function generate(text) {
 }
 
 /**
- * MP3 audio for `text`: memory cache -> disk cache -> ElevenLabs (once per
- * line, ever). Throws VoiceUnavailableError when disabled or on any failure.
+ * MP3 audio for `text` and where it came from: memory -> disk -> bucket
+ * (Object Storage, if configured) -> ElevenLabs. New audio is saved to disk
+ * and uploaded to the bucket, so each line is generated once, ever -- even
+ * across server rebuilds. Throws VoiceUnavailableError when disabled or when
+ * ElevenLabs is needed and fails.
+ *
+ * @returns {Promise<{ audio: Buffer, source: "memory"|"disk"|"bucket"|"elevenlabs" }>}
  */
-export async function synthesize(text) {
+export async function synthesizeWithSource(text) {
   const disabled = voiceDisabledReason();
   if (disabled) throw new VoiceUnavailableError(disabled);
 
-  if (!memoryCache.has(text)) {
-    const pending = (async () => {
-      const file = cacheFile(text);
-      try {
-        return await fs.promises.readFile(file);
-      } catch {
-        // not cached on disk yet
-      }
-
-      const audio = await generate(text);
-      console.log(`[voice] generated ${text.length} chars via ElevenLabs: "${text}"`);
-      await fs.promises.mkdir(CACHE_DIR, { recursive: true });
-      await fs.promises.writeFile(file, audio);
-      return audio;
-    })();
-
-    memoryCache.set(text, pending);
-    // Don't cache failures -- the next request should try again.
-    pending.catch(() => memoryCache.delete(text));
+  if (memoryCache.has(text)) {
+    const { audio } = await memoryCache.get(text);
+    return { audio, source: "memory" };
   }
 
-  return memoryCache.get(text);
+  const pending = (async () => {
+    try {
+      return { audio: await fs.promises.readFile(cacheFile(text)), source: "disk" };
+    } catch {
+      // not cached on disk yet
+    }
+
+    const store = objectStore();
+    const fromBucket = store && (await readBucket(store, text));
+    if (fromBucket) {
+      await writeDisk(text, fromBucket);
+      return { audio: fromBucket, source: "bucket" };
+    }
+
+    const audio = await generate(text);
+    console.log(`[voice] generated ${text.length} chars via ElevenLabs: "${text}"`);
+    await writeDisk(text, audio);
+    if (store) await uploadBucket(store, text, audio);
+    return { audio, source: "elevenlabs" };
+  })();
+
+  memoryCache.set(text, pending);
+  // Don't cache failures -- the next request should try again.
+  pending.catch(() => memoryCache.delete(text));
+  return pending;
+}
+
+/** MP3 audio for `text` (see synthesizeWithSource). */
+export async function synthesize(text) {
+  return (await synthesizeWithSource(text)).audio;
 }
