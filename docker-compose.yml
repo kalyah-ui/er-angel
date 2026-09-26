@@ -1,25 +1,47 @@
-version: "3.9"
+# Production stack for the Vultr server: backend + Caddy (HTTPS, dashboard,
+# /api proxy). The kiosk and presage-agent run on a laptop, not here.
+#
+#   cp .env.example .env      # on the server, fill in real values (never committed)
+#   docker compose up -d --build
+#
+# Local development doesn't use this file -- keep using `npm run dev`.
+name: er-angel
 
 services:
   backend:
     build: ./backend
-    ports:
-      - "4000:4000"
-    env_file:
-      - .env
+    restart: unless-stopped
+    env_file: .env
     volumes:
-      - ./backend/data:/app/data
+      - backend-data:/app/data # SQLite db + ElevenLabs voice cache
+    # Not published: only reachable by Caddy on the internal network.
+    expose:
+      - "4000"
 
-  kiosk:
-    build: ./frontend-kiosk
-    ports:
-      - "5173:5173"
+  web:
+    build:
+      context: ./frontend-dashboard
+      args:
+        VITE_API_URL: /api
+    restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    # Only what Caddy needs (not the API keys). ":?" = refuse to start if unset/empty.
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+      DASHBOARD_USER: ${DASHBOARD_USER:?set DASHBOARD_USER in .env}
+      DASHBOARD_PASSWORD_HASH: ${DASHBOARD_PASSWORD_HASH:?set DASHBOARD_PASSWORD_HASH in .env}
+      KIOSK_TOKEN: ${KIOSK_TOKEN:?set KIOSK_TOKEN in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data # HTTPS certificates -- keep, or Caddy re-requests them
+      - caddy-config:/config
 
-  dashboard:
-    build: ./frontend-dashboard
-    ports:
-      - "5174:5174"
-    depends_on:
-      - backend
+volumes:
+  backend-data:
+  caddy-data:
+  caddy-config:

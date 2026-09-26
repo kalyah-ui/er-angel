@@ -1,4 +1,10 @@
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+// Hosted backend only: shared secret the server's Caddy checks. Unset locally.
+const KIOSK_TOKEN = import.meta.env.VITE_KIOSK_TOKEN || "";
+
+function backendHeaders(extra = {}) {
+  return KIOSK_TOKEN ? { ...extra, "X-Kiosk-Token": KIOSK_TOKEN } : extra;
+}
 
 // Backend is down, unreachable, too slow, or erroring -- send the patient to the front desk.
 export class BackendUnavailableError extends Error {}
@@ -9,7 +15,7 @@ async function request(path, { method = "GET", body, timeoutMs = 10000 } = {}) {
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: backendHeaders(body ? { "Content-Type": "application/json" } : {}),
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -17,6 +23,9 @@ async function request(path, { method = "GET", body, timeoutMs = 10000 } = {}) {
     throw new BackendUnavailableError(`${method} ${path}: ${err.message}`);
   }
 
+  if (res.status === 401 || res.status === 403) {
+    throw new BackendUnavailableError(`${method} ${path}: HTTP ${res.status} -- check VITE_KIOSK_TOKEN matches the server's KIOSK_TOKEN`);
+  }
   if (res.status === 404) throw new NotFoundError(`${method} ${path}: not found`);
   if (res.status >= 500) throw new BackendUnavailableError(`${method} ${path}: HTTP ${res.status}`);
   if (!res.ok) throw new Error(`${method} ${path}: HTTP ${res.status}`);
@@ -60,7 +69,7 @@ export function markCallAnnounced(id) {
 export async function fetchSpeech(text) {
   const res = await fetch(`${BASE_URL}/speak`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: backendHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ text }),
     signal: AbortSignal.timeout(8000),
   });

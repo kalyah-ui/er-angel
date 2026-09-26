@@ -1,0 +1,10 @@
+# Installed fresh inside the image (a Windows node_modules would crash Linux).
+node_modules
+# Secrets and local data never go into an image: the server passes .env at
+# runtime and keeps data in a Docker volume.
+.env
+.env.*
+data
+tests
+*.log
+.DS_Store
