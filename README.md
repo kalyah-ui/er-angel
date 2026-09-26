@@ -56,13 +56,18 @@ See `backend/src/db/schema.sql` for the exact data shapes.
 
 ## Deploying to Vultr
 
+The server runs the backend + nurse dashboard behind Caddy (automatic HTTPS);
+the kiosk and presage-agent stay on a laptop.
+
 ```bash
-docker compose up --build -d
+# on the server
+cp .env.example .env        # fill in; never commit it
+docker compose up -d --build
 ```
 
-Point a Vultr Compute instance's DNS/IP at ports 4000 (backend), 5173
-(kiosk), 5174 (dashboard), or put nginx in front of all three. Do this
-deploy EARLY (see schedule) — don't leave it to the last few hours.
+- `https://<SITE_ADDRESS>/` -- dashboard (login: `DASHBOARD_USER` + password)
+- `https://<SITE_ADDRESS>/api/*` -- backend; the kiosk authenticates with `X-Kiosk-Token`
+- Access rules: `deploy/Caddyfile`. Kiosk laptop setup: `frontend-kiosk/.env.example`.
 
 ## Demo script
 

@@ -1,0 +1,45 @@
+# ER Angel -- public entry point on the server.
+#   https://{$SITE_ADDRESS}/       nurse dashboard (static files)
+#   https://{$SITE_ADDRESS}/api/*  backend API (the /api prefix is stripped)
+#
+# Access:
+#   - Browsers (dashboard, and its /api calls) log in with HTTP basic auth.
+#   - The kiosk (on a laptop, cross-origin) sends X-Kiosk-Token instead, and
+#     only reaches the endpoints it uses -- not the patient list, alerts, or
+#     /admin/reset.
+#   - CORS preflights and /api/health are open; the backend handles CORS.
+#
+# Values come from /opt/er-angel/.env via docker-compose.yml, which refuses
+# to start if any of them is missing (an empty KIOSK_TOKEN would otherwise
+# match requests with no token at all). With SITE_ADDRESS set to a hostname
+# (e.g. 203-0-113-5.sslip.io), Caddy gets and renews HTTPS certificates itself.
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	@needsLogin {
+		not {
+			path /api/*
+			method OPTIONS
+		}
+		not path /api/health
+		not {
+			path /api/checkin /api/reading /api/reading/* /api/patients/* /api/calls/* /api/speak
+			header X-Kiosk-Token {$KIOSK_TOKEN}
+		}
+	}
+
+	basic_auth @needsLogin {
+		{$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+	}
+
+	handle_path /api/* {
+		reverse_proxy {$BACKEND_UPSTREAM:backend:4000}
+	}
+
+	handle {
+		root * {$SITE_ROOT:/srv}
+		try_files {path} /index.html
+		file_server
+	}
+}
