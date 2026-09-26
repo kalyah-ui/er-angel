@@ -28,10 +28,10 @@ export function checkIn({ name, chief_complaint }) {
 }
 
 // Rescans wait on Gemini (retries + backup model) when it's enabled, so allow extra time.
-export function submitReading({ patient_id, heart_rate, breathing_rate, stress_score, is_baseline }) {
+export function submitReading({ patient_id, heart_rate, breathing_rate, stress_score, face_asymmetry_score, is_baseline }) {
   return request("/reading", {
     method: "POST",
-    body: { patient_id, heart_rate, breathing_rate, stress_score, is_baseline },
+    body: { patient_id, heart_rate, breathing_rate, stress_score, face_asymmetry_score, is_baseline },
     timeoutMs: 45000,
   });
 }

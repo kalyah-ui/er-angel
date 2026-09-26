@@ -4,8 +4,11 @@
  *
  *   GET  /health  -> { ok: true }
  *   POST /capture   body { duration_ms }  (agent default 20000)
- *     200 -> { heart_rate, breathing_rate, stress_score: null, sample_count }
- *            heart_rate/breathing_rate are null if no samples were decoded
+ *     200 -> { heart_rate, breathing_rate, stress_score, face_asymmetry_score, sample_count }
+ *            heart_rate/breathing_rate are null if no samples were decoded;
+ *            stress_score = EDA (small values, e.g. 0.039) and
+ *            face_asymmetry_score (e.g. 0.007, stroke screening) are null
+ *            when the agent couldn't measure them
  *     409 -> a capture is already in progress
  *     500 -> { error, detail }
  *
@@ -33,11 +36,14 @@ function round1(n) {
   return n == null ? null : Math.round(n * 10) / 10;
 }
 
+// HR/RR are rounded for display; EDA and face asymmetry are small fractions
+// (e.g. 0.039) that the backend's EDA check compares, so they're kept as-is.
 export function normalizeVitals(raw) {
   return {
     heart_rate: round1(toNumber(raw?.heart_rate)),
     breathing_rate: round1(toNumber(raw?.breathing_rate)),
-    stress_score: round1(toNumber(raw?.stress_score)),
+    stress_score: toNumber(raw?.stress_score),
+    face_asymmetry_score: toNumber(raw?.face_asymmetry_score),
   };
 }
 

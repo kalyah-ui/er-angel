@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS readings (
   heart_rate REAL,
   breathing_rate REAL,
   stress_score REAL,           -- optional, only if Presage tier exposes it
+  face_asymmetry_score REAL,
   is_baseline INTEGER NOT NULL DEFAULT 0,  -- 1 = this is the triage baseline
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

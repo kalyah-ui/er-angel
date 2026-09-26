@@ -1,15 +1,15 @@
 import { parseUtc } from "../api/client.js";
 
-function formatValue(value) {
+function formatValue(value, digits = 0) {
   const n = typeof value === "string" ? Number(value) : value;
-  return typeof n === "number" && Number.isFinite(n) ? String(Math.round(n)) : "—";
+  return typeof n === "number" && Number.isFinite(n) ? n.toFixed(digits) : "—";
 }
 
-function formatDelta(baseline, latest) {
+function formatDelta(baseline, latest, digits = 0) {
   if (!Number.isFinite(baseline) || !Number.isFinite(latest)) return null;
-  const delta = Math.round(latest - baseline);
+  const delta = Number((latest - baseline).toFixed(digits));
   if (delta === 0) return "±0";
-  return delta > 0 ? `+${delta}` : `−${Math.abs(delta)}`;
+  return delta > 0 ? `+${delta.toFixed(digits)}` : `−${Math.abs(delta).toFixed(digits)}`;
 }
 
 function minutesSince(timestamp) {
@@ -18,10 +18,11 @@ function minutesSince(timestamp) {
   return Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
 }
 
+// Stress is Presage EDA -- small fractions like 0.039, so it needs decimals.
 const VITALS = [
-  { key: "heart_rate", label: "HR" },
-  { key: "breathing_rate", label: "RR" },
-  { key: "stress_score", label: "Stress" },
+  { key: "heart_rate", label: "HR", digits: 0 },
+  { key: "breathing_rate", label: "RR", digits: 0 },
+  { key: "stress_score", label: "Stress", digits: 3 },
 ];
 
 function formatAgo(timestamp) {
@@ -109,14 +110,14 @@ export default function PatientCard({ patient, risk, nextUp, onAcknowledge, onCa
           </tr>
         </thead>
         <tbody>
-          {VITALS.map(({ key, label }) => {
-            const delta = formatDelta(baseline?.[key], latest?.[key]);
+          {VITALS.map(({ key, label, digits }) => {
+            const delta = formatDelta(baseline?.[key], latest?.[key], digits);
             return (
               <tr key={key}>
                 <th scope="row">{label}</th>
-                <td>{formatValue(baseline?.[key])}</td>
+                <td>{formatValue(baseline?.[key], digits)}</td>
                 <td>
-                  {formatValue(latest?.[key])}
+                  {formatValue(latest?.[key], digits)}
                   {delta && <span className="delta"> ({delta})</span>}
                 </td>
               </tr>

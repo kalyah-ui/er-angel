@@ -1,29 +1,7 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { db } from "../db/db.js";
 import { insertReading, insertAlert } from "../services/recordReading.js";
 import { createCall, markAnnounced } from "../services/calls.js";
 import { toSqliteUtc } from "./sqliteTime.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MOCK_PATH = path.join(__dirname, "../../../test_output.json");
-
-// The high-risk patient replays the rescan reading from test_output.json.
-// The backend Docker image only contains backend/, so fall back to the same
-// values if the file isn't there.
-function mockRescan() {
-  try {
-    const { reading } = JSON.parse(fs.readFileSync(MOCK_PATH, "utf-8"));
-    return {
-      heart_rate: reading.heart_rate,
-      breathing_rate: reading.breathing_rate,
-      stress_score: reading.stress_score,
-    };
-  } catch {
-    return { heart_rate: 110, breathing_rate: 15, stress_score: null };
-  }
-}
 
 // Alert text is pre-written (in the style Gemini produces) so Reset is
 // instant and costs no Gemini quota. Only real kiosk rescans call Gemini.
@@ -32,9 +10,10 @@ function demoPatients() {
     {
       name: "Alex Chen",
       chief_complaint: "Mild chest tightness",
-      // Baseline 72/14 is the one described in test_output.json's delta_summary.
+      // Fixed values (not read from test_output.json, which is a shared sample
+      // that changes) so they always match the pre-written alert below.
       baseline: { heart_rate: 72, breathing_rate: 14, stress_score: null },
-      rescan: mockRescan(),
+      rescan: { heart_rate: 110, breathing_rate: 15, stress_score: null },
       alert: (label) => ({
         risk_level: "high",
         delta_summary:
