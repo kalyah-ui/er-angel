@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import PatientList from "./components/PatientList.jsx";
-import { fetchPatients, fetchAlerts, acknowledgeAlert, resetDemo, poll } from "./api/client.js";
+import { fetchPatients, fetchAlerts, acknowledgeAlert, callPatient, resetDemo, poll } from "./api/client.js";
 
 const POLL_INTERVAL_MS = 5000;
 const RESET_CONFIRM_MS = 4000;
@@ -53,6 +53,17 @@ export default function App() {
       await Promise.all(openIds.map(acknowledgeAlert));
     } catch {
       setConnected(false);
+    }
+  }
+
+  // Always a nurse click -- patients are never called to triage automatically.
+  async function handleCall(patientId) {
+    const calledAt = new Date().toISOString();
+    setPatients((prev) => prev.map((p) => (p.id === patientId ? { ...p, last_called_at: calledAt } : p)));
+    try {
+      await callPatient(patientId);
+    } catch {
+      setConnected(false); // next successful poll restores the real state
     }
   }
 
@@ -117,7 +128,7 @@ export default function App() {
         {connected === null ? (
           <p className="empty">Connecting…</p>
         ) : (
-          <PatientList patients={patients} onAcknowledge={handleAcknowledge} />
+          <PatientList patients={patients} onAcknowledge={handleAcknowledge} onCall={handleCall} />
         )}
       </main>
     </div>

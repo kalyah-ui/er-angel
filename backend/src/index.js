@@ -9,6 +9,9 @@ import { patientsRouter } from "./routes/patients.js";
 import { alertsRouter } from "./routes/alerts.js";
 import { adminRouter } from "./routes/admin.js";
 import { speakRouter } from "./routes/speak.js";
+import { callsRouter } from "./routes/calls.js";
+import { startRecheckScheduler } from "./services/recheck.js";
+import { recheckTimeScale } from "./logic/recheck.js";
 
 const app = express();
 app.use(cors());
@@ -22,8 +25,11 @@ app.use("/patients", patientsRouter);
 app.use("/alerts", alertsRouter);
 app.use("/admin", adminRouter);
 app.use("/speak", speakRouter);
+app.use("/calls", callsRouter);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`[waitwatch-backend] listening on http://localhost:${PORT}`);
+  startRecheckScheduler();
+  console.log(`[recheck] reminders on, RECHECK_TIME_SCALE=${recheckTimeScale()}`);
 });

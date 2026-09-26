@@ -8,10 +8,11 @@ export const adminRouter = Router();
 // demo patients with pre-written alerts (see logic/demoSeed.js; no Gemini calls).
 adminRouter.post("/reset", (req, res) => {
   db.exec(`
+    DELETE FROM calls;
     DELETE FROM alerts;
     DELETE FROM readings;
     DELETE FROM patients;
-    DELETE FROM sqlite_sequence WHERE name IN ('alerts', 'readings', 'patients');
+    DELETE FROM sqlite_sequence WHERE name IN ('calls', 'alerts', 'readings', 'patients');
   `);
 
   if (!req.body?.seed) {

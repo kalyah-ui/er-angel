@@ -296,7 +296,47 @@ button {
   border: 1px solid var(--line);
   color: var(--muted);
   opacity: 0.8;
-  z-index: 15;
+  /* above the announcement banner, so it can be muted mid-announcement */
+  z-index: 40;
 }
 .mute-toggle:hover { opacity: 1; color: var(--accent-dark); }
 .mute-toggle[aria-pressed="true"] { color: var(--danger); opacity: 1; }
+
+/* ---------- PA announcement banner ---------- */
+
+.announcement {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 30;
+  padding: calc(20px + env(safe-area-inset-top, 0px)) 72px 24px 32px;
+  background: #0f2a4a;
+  color: #ffffff;
+  box-shadow: 0 10px 30px rgba(15, 42, 74, 0.35);
+  animation: announcement-in 300ms ease-out;
+}
+.announcement-recheck { background: #0d3b3a; }
+.announcement-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #bcd6f5;
+}
+.announcement-text {
+  margin: 6px 0 0;
+  font-size: clamp(1.8rem, 5vw, 2.8rem);
+  font-weight: 800;
+  line-height: 1.2;
+}
+@keyframes announcement-in {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .announcement { animation: none; }
+}

@@ -17,3 +17,17 @@ export const PROMPTS = {
 
 // Lines that don't depend on the patient.
 export const FIXED_PROMPTS = ["checkin", "capture", "thanks", "frontDesk"];
+
+// PA announcements, by call type. Patient NUMBER only -- never the name,
+// on screen or in audio (privacy). `banner` is shown, `spoken` is said twice.
+export const ANNOUNCEMENTS = {
+  triage: {
+    banner: (n) => `Patient #${n}, please come to the triage desk`,
+    spoken: (n) => `Patient number ${n}, please come to the triage desk.`,
+  },
+  // Automatic, from the backend recheck scheduler.
+  recheck: {
+    banner: (n) => `Patient #${n}, please return to the check-in kiosk for a quick vitals check`,
+    spoken: (n) => `Patient number ${n}, please return to the check-in kiosk for a quick vitals check.`,
+  },
+};

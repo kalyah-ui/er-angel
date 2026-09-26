@@ -1,14 +1,17 @@
 import { db } from "../db/db.js";
 import { classifyRisk } from "./geminiRisk.js";
 import { generateAlertLine } from "./geminiAlertText.js";
+import { cancelPendingRechecks } from "./calls.js";
+import { toSqliteUtc } from "../logic/sqliteTime.js";
 
-export function insertReading(patientId, { heart_rate, breathing_rate, stress_score, is_baseline }) {
+// `now` is injectable so tests control reading times (recheck timing depends on them).
+export function insertReading(patientId, { heart_rate, breathing_rate, stress_score, is_baseline }, now = new Date()) {
   const info = db
     .prepare(`
-      INSERT INTO readings (patient_id, heart_rate, breathing_rate, stress_score, is_baseline)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO readings (patient_id, heart_rate, breathing_rate, stress_score, is_baseline, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
     `)
-    .run(patientId, heart_rate, breathing_rate ?? null, stress_score ?? null, is_baseline ? 1 : 0);
+    .run(patientId, heart_rate, breathing_rate ?? null, stress_score ?? null, is_baseline ? 1 : 0, toSqliteUtc(now));
   return db.prepare("SELECT * FROM readings WHERE id = ?").get(info.lastInsertRowid);
 }
 
@@ -27,12 +30,16 @@ export function insertAlert(patientId, readingId, { risk_level, delta_summary, r
  * patient's baseline via Gemini and stores the resulting alert. Used by
  * POST /reading, i.e. real kiosk scans.
  *
+ * Any new reading restarts the patient's recheck timer (and clears a missed
+ * recheck); a reminder still queued for them is dropped.
+ *
  * @param {object} patient  row from the patients table
  * @param {object} vitals   { heart_rate, breathing_rate, stress_score, is_baseline }
  * @returns {Promise<{ reading: object, alert: object|null }>}
  */
-export async function recordReading(patient, vitals) {
-  const reading = insertReading(patient.id, vitals);
+export async function recordReading(patient, vitals, now = new Date()) {
+  const reading = insertReading(patient.id, vitals, now);
+  cancelPendingRechecks(patient.id);
 
   // Baseline reading: nothing to compare against yet.
   if (vitals.is_baseline) {

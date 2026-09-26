@@ -1,9 +1,11 @@
 /**
- * Pre-generates the kiosk's fixed voice lines into backend/data/voice-cache/
- * so the demo never waits on ElevenLabs. Lines already cached cost nothing.
- * Doesn't need the backend running; uses ELEVENLABS_* from backend/.env.
+ * Pre-generates the kiosk's fixed voice lines -- screen prompts plus PA
+ * announcements (triage calls, recheck reminders) for patients 1-10 -- into
+ * backend/data/voice-cache/, so the demo never waits on ElevenLabs. Lines
+ * already cached cost nothing. Doesn't need the backend running; uses
+ * ELEVENLABS_* from backend/.env.
  *
- *   npm run voice:warm                     # fixed lines only
+ *   npm run voice:warm                     # screen prompts + announcements for patients 1-10
  *   npm run voice:warm -- --patients=4-10  # also "You're checked in, patient number N" for N=4..10
  *
  * The lines come from frontend-kiosk/src/lib/voiceLines.js -- the same file
@@ -11,8 +13,10 @@
  * the next kiosk check-in is patient 4.)
  */
 import "dotenv/config";
-import { PROMPTS, FIXED_PROMPTS } from "../../frontend-kiosk/src/lib/voiceLines.js";
+import { PROMPTS, FIXED_PROMPTS, ANNOUNCEMENTS } from "../../frontend-kiosk/src/lib/voiceLines.js";
 import { isCachedOnDisk, synthesize, voiceDisabledReason, VOICE_ID, MODEL_ID } from "../src/services/elevenLabsTts.js";
+
+const ANNOUNCED_PATIENTS = Array.from({ length: 10 }, (_, i) => i + 1);
 
 function patientRange(args) {
   const arg = args.find((a) => a.startsWith("--patients="));
@@ -40,6 +44,9 @@ try {
 
 const lines = [
   ...FIXED_PROMPTS.map((name) => ({ name, text: PROMPTS[name]() })),
+  ...Object.entries(ANNOUNCEMENTS).flatMap(([type, lines]) =>
+    ANNOUNCED_PATIENTS.map((n) => ({ name: `${type} #${n}`, text: lines.spoken(n) }))
+  ),
   ...patientIds.map((id) => ({
     name: `checkedIn #${id}`,
     text: PROMPTS.checkedIn({ patient: { id } }),

@@ -220,3 +220,56 @@ body {
 .vitals td { font-size: 1.15rem; font-weight: 600; }
 .delta { font-size: 0.85rem; font-weight: 500; color: var(--muted); }
 .units { margin: -6px 0 0; font-size: 0.75rem; color: var(--muted); }
+
+/* ---------- calling patients ---------- */
+
+.next-up {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.call-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.call-status { font-size: 0.9rem; color: var(--muted); font-weight: 600; }
+.call-button {
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 2px solid var(--accent);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+.call-button:hover { background: var(--accent); color: #fff; }
+.call-button.called { border-color: var(--line); color: var(--muted); }
+.call-button.called:hover { border-color: var(--accent); background: var(--surface); color: var(--accent); }
+
+/* ---------- recheck reminders ---------- */
+
+.recheck { display: block; margin-top: 2px; font-weight: 500; }
+.recheck-due { color: var(--medium); font-weight: 700; }
+
+.patient-card.missed { box-shadow: 0 0 0 3px var(--medium); }
+.missed-flag {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #fbe7bf;
+  border: 1px solid var(--medium);
+  color: #6b4400;
+  font-weight: 700;
+}

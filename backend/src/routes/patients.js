@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { db } from "../db/db.js";
+import { callToTriage, lastTriageCallAt } from "../services/calls.js";
+import { recheckFields } from "../services/recheck.js";
 
 export const patientsRouter = Router();
 
@@ -24,10 +26,20 @@ patientsRouter.get("/", (req, res) => {
       baseline_reading: baselineReading || null,
       latest_reading: latestReading || null,
       latest_alert: latestAlert || null,
+      last_called_at: lastTriageCallAt(p.id),
+      ...recheckFields(p.id), // next_recheck_at, recheck_due, missed_recheck, recheck_reminders
     };
   });
 
   res.json(withStatus);
+});
+
+// POST /patients/:id/call -- nurse calls the patient to the triage desk (kiosk announces it).
+// Always nurse-initiated; nothing calls patients to triage automatically.
+patientsRouter.post("/:id/call", (req, res) => {
+  const patient = db.prepare("SELECT * FROM patients WHERE id = ?").get(req.params.id);
+  if (!patient) return res.status(404).json({ error: "patient not found" });
+  res.status(201).json(callToTriage(patient.id));
 });
 
 patientsRouter.get("/:id", (req, res) => {

@@ -41,6 +41,15 @@ export function getPatient(id) {
   return request(`/patients/${encodeURIComponent(id)}`);
 }
 
+// PA calls waiting to be announced: [{ id, patient_id, type: "triage" | "recheck", created_at }]
+export function fetchPendingCalls() {
+  return request("/calls/pending", { timeoutMs: 4000 });
+}
+
+export function markCallAnnounced(id) {
+  return request(`/calls/${encodeURIComponent(id)}/announced`, { method: "POST", timeoutMs: 4000 });
+}
+
 // MP3 for a voice line (backend proxies ElevenLabs; the key stays server-side).
 // Throws if voice is off or ElevenLabs fails -- callers fall back to browser speech.
 export async function fetchSpeech(text) {

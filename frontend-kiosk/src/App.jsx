@@ -6,9 +6,11 @@ import Capture from "./screens/Capture.jsx";
 import Message from "./screens/Message.jsx";
 import DemoControls from "./components/DemoControls.jsx";
 import MuteToggle from "./components/MuteToggle.jsx";
+import AnnouncementBanner from "./components/AnnouncementBanner.jsx";
 import { checkIn, getBaseline, getPatient, submitReading, NotFoundError } from "./api/client.js";
 import { acquireVitals } from "./lib/capture.js";
 import { isAgentAvailable } from "./lib/presage.js";
+import { useAnnouncer } from "./lib/useAnnouncer.js";
 import { isMuted, playPrompt, setMuted, unlockAudio } from "./lib/voice.js";
 
 const AUTO_RETURN_MS = 8000;
@@ -27,6 +29,9 @@ export default function App() {
   // true once the Presage agent is found unreachable/failing and we fall back to mock vitals
   const [demoMode, setDemoMode] = useState(false);
   const [muted, setMutedState] = useState(isMuted);
+  // PA announcements (nurse triage calls, recheck reminders). Shown during a
+  // capture too, but only spoken once it's over.
+  const banner = useAnnouncer(screen.name === "capture");
   // Bumped whenever a flow starts or is cancelled, so stale async steps bail out.
   const flowId = useRef(0);
 
@@ -200,6 +205,7 @@ export default function App() {
   return (
     <>
       {renderScreen()}
+      <AnnouncementBanner banner={banner} />
       <MuteToggle
         muted={muted}
         onToggle={() => {

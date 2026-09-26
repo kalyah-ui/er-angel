@@ -24,7 +24,23 @@ const VITALS = [
   { key: "stress_score", label: "Stress" },
 ];
 
-export default function PatientCard({ patient, risk, onAcknowledge }) {
+function formatAgo(timestamp) {
+  const minutes = minutesSince(timestamp);
+  if (minutes == null) return null;
+  return minutes < 1 ? "just now" : `${minutes} min ago`;
+}
+
+function formatRecheck(patient) {
+  if (patient.missed_recheck) return null; // shown as the amber flag instead
+  if (patient.recheck_due) return { text: "Recheck due", due: true };
+  const next = parseUtc(patient.next_recheck_at);
+  if (!next) return null; // no reading yet, or already called to triage
+  const seconds = Math.max(0, Math.round((next.getTime() - Date.now()) / 1000));
+  const when = seconds < 120 ? `${Math.max(5, Math.ceil(seconds / 5) * 5)} s` : `${Math.ceil(seconds / 60)} min`;
+  return { text: `Next recheck in ${when}`, due: false };
+}
+
+export default function PatientCard({ patient, risk, nextUp, onAcknowledge, onCall }) {
   const baseline = patient.baseline_reading;
   // Until the first rescan, the latest reading *is* the baseline.
   const latest = patient.latest_reading && !Number(patient.latest_reading.is_baseline)
@@ -33,11 +49,15 @@ export default function PatientCard({ patient, risk, onAcknowledge }) {
   const alert = patient.latest_alert;
   const isOpen = Boolean(alert) && !Number(alert.acknowledged);
   const minutes = minutesSince(baseline?.created_at || patient.created_at);
+  const calledAgo = formatAgo(patient.last_called_at);
+  const recheck = formatRecheck(patient);
+  const missed = Boolean(patient.missed_recheck);
 
   return (
-    <article className={`patient-card risk-${risk}${risk === "high" && isOpen ? " pulse" : ""}`}>
+    <article className={`patient-card risk-${risk}${risk === "high" && isOpen ? " pulse" : ""}${missed ? " missed" : ""}`}>
       <div className="card-header">
         <div>
+          {nextUp && <span className="next-up">Next up</span>}
           <h2 className="patient-name">{patient.name}</h2>
           <p className="complaint">{patient.chief_complaint || "No complaint recorded"}</p>
         </div>
@@ -48,6 +68,12 @@ export default function PatientCard({ patient, risk, onAcknowledge }) {
           </span>
         </div>
       </div>
+
+      {missed && (
+        <p className="missed-flag" role="status">
+          Missed recheck — check on patient
+        </p>
+      )}
 
       {alert && (
         <div className="alert-block">
@@ -62,6 +88,17 @@ export default function PatientCard({ patient, risk, onAcknowledge }) {
           )}
         </div>
       )}
+
+      <div className="call-row">
+        <span className="call-status">
+          #{patient.id}
+          {calledAgo && <> · Called {calledAgo}</>}
+          {recheck && <span className={`recheck${recheck.due ? " recheck-due" : ""}`}>{recheck.text}</span>}
+        </span>
+        <button className={`call-button${calledAgo ? " called" : ""}`} onClick={() => onCall(patient.id)}>
+          {calledAgo ? "Call again" : "Call patient"}
+        </button>
+      </div>
 
       <table className="vitals">
         <thead>

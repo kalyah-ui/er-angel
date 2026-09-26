@@ -20,6 +20,11 @@ export function acknowledgeAlert(id) {
   return request(`/alerts/${id}/ack`, { method: "POST" });
 }
 
+// Nurse calls the patient to the triage desk; the kiosk announces it (number only).
+export function callPatient(id) {
+  return request(`/patients/${id}/call`, { method: "POST" });
+}
+
 export function resetDemo(seed = true) {
   return request("/admin/reset", {
     method: "POST",
