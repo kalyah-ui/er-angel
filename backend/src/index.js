@@ -7,7 +7,7 @@ import { checkinRouter } from "./routes/checkin.js";
 import { readingsRouter } from "./routes/readings.js";
 import { patientsRouter } from "./routes/patients.js";
 import { alertsRouter } from "./routes/alerts.js";
-import { presageRouter } from "./routes/presage.js";
+import { adminRouter } from "./routes/admin.js";
 
 const app = express();
 app.use(cors());
@@ -19,7 +19,7 @@ app.use("/checkin", checkinRouter);
 app.use("/reading", readingsRouter);
 app.use("/patients", patientsRouter);
 app.use("/alerts", alertsRouter);
-app.use("/presage", presageRouter);
+app.use("/admin", adminRouter);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
