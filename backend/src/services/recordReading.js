@@ -44,6 +44,14 @@ export function insertAlert(patientId, readingId, { risk_level, delta_summary, r
  */
 function applyEdaAlert(riskJson, edaAlert) {
   const pairedVitals = edaAlert.accompanyingVitalsIncreasing;
+
+  // Only escalate when corroborated by rising HR/RR -- isolated EDA
+  // movement alone shouldn't override Gemini's own judgment, since EDA
+  // is noisier and less clinically established than HR/RR/asymmetry.
+  if (!pairedVitals) {
+    return riskJson; // leave Gemini's assessment untouched
+  }
+
   const edaReason = edaAlert.aboveBaseline
     ? `EDA is ${Math.round(edaAlert.percentAboveBaseline)}% above its rolling baseline`
     : "EDA has risen for 3 consecutive check-ins";
@@ -54,11 +62,10 @@ function applyEdaAlert(riskJson, edaAlert) {
 
   return {
     ...riskJson,
-    risk_level: pairedVitals || riskJson.risk_level === "high" ? "high" : "medium",
-    delta_summary: `${riskJson.delta_summary} EDA alert: ${edaReason}${pairedVitals ? `, with increasing ${increasingVitals}` : ""}.`,
-    recommended_action: pairedVitals
-      ? "Prompt nurse reassessment due to concurrent EDA and vital-sign increases."
-      : "Nurse review recommended; repeat vitals and assess the patient.",
+    // Escalate, never downgrade below what Gemini already concluded.
+    risk_level: riskJson.risk_level === "high" ? "high" : "medium",
+    delta_summary: `${riskJson.delta_summary} EDA alert: ${edaReason}, with increasing ${increasingVitals}.`,
+    recommended_action: "Prompt nurse reassessment due to concurrent EDA and vital-sign increases.",
   };
 }
 
@@ -79,7 +86,6 @@ export async function recordReading(patient, vitals, now = new Date()) {
   const reading = insertReading(patient.id, vitals, now);
   cancelPendingRechecks(patient.id);
 
-  // Baseline reading: nothing to compare against yet.
   if (vitals.is_baseline) {
     return { reading, alert: null };
   }
@@ -94,7 +100,6 @@ export async function recordReading(patient, vitals, now = new Date()) {
 
   const { heart_rate, breathing_rate, stress_score } = vitals;
 
-  // Up to 5 readings before this one, oldest first, for the EDA rolling baseline/trend.
   const history = db
     .prepare("SELECT heart_rate, breathing_rate, stress_score FROM readings WHERE patient_id = ? AND id < ? ORDER BY id DESC LIMIT 5")
     .all(patient.id, reading.id)
@@ -110,13 +115,19 @@ export async function recordReading(patient, vitals, now = new Date()) {
     minutesElapsed,
   });
 
-  if (edaAlert.triggered) riskJson = applyEdaAlert(riskJson, edaAlert);
+  // Only escalate when EDA is corroborated by rising HR/RR -- isolated
+  // EDA movement alone shouldn't override or bypass Gemini's own
+  // assessment. This must match the condition applyEdaAlert uses
+  // internally, since that's what actually determines whether riskJson
+  // was modified.
+  const edaEscalated = edaAlert.triggered && edaAlert.accompanyingVitalsIncreasing;
+  if (edaEscalated) riskJson = applyEdaAlert(riskJson, edaAlert);
 
-  // An EDA alert's summary already says exactly why, so it's used as-is.
   const label = `Patient ${patient.id}`;
-  const reason_text = edaAlert.triggered
+  const reason_text = edaEscalated
     ? `${label}: ${riskJson.delta_summary}`
     : await generateAlertLine(riskJson, label);
+
   const alert = insertAlert(patient.id, reading.id, { ...riskJson, reason_text });
 
   return { reading, alert };
