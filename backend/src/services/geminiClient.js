@@ -32,23 +32,55 @@ function apiKeys() {
   return [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_2].filter(Boolean);
 }
 
+// Hourly cap on Gemini requests (every attempt counts: retries, fallback
+// model, second key), so a flood of kiosk readings can't burn the quota.
+// Beyond it callers use their rule-based fallback. GEMINI_MAX_CALLS_PER_HOUR
+// overrides the default; 0 means rule-based only.
+const DEFAULT_MAX_CALLS_PER_HOUR = 60;
+const HOUR_MS = 60 * 60 * 1000;
+let recentCalls = []; // timestamps of attempts in the last hour
+
+export class GeminiCapError extends Error {}
+
+function maxCallsPerHour() {
+  const raw = process.env.GEMINI_MAX_CALLS_PER_HOUR?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return Number.isInteger(n) && n >= 0 ? n : DEFAULT_MAX_CALLS_PER_HOUR;
+}
+
+function callsInLastHour(now = Date.now()) {
+  recentCalls = recentCalls.filter((t) => now - t < HOUR_MS);
+  return recentCalls.length;
+}
+
+function capReason() {
+  const max = maxCallsPerHour();
+  return callsInLastHour() >= max ? `hourly cap reached (GEMINI_MAX_CALLS_PER_HOUR=${max})` : null;
+}
+
+/** For tests: forget the calls counted toward the hourly cap. */
+export function resetGeminiCallCount() {
+  recentCalls = [];
+}
+
 /**
  * Why Gemini shouldn't be called right now, or null if it can be.
  * GEMINI_ENABLED=false (or 0/no/off) turns it off to save free-tier quota
- * during development; unset means enabled.
+ * during development; unset means enabled. Also non-null once the hourly
+ * cap is used up.
  */
 export function geminiDisabledReason() {
   if (isFlagDisabled("GEMINI_ENABLED")) return "GEMINI_ENABLED=false";
   if (!apiKeys().length) return "no GEMINI_API_KEY set";
-  return null;
+  return capReason();
 }
 
 /**
  * Runs `run(model)` against the primary Flash model, retrying transient
  * failures with backoff, then makes one attempt on the fallback Flash model.
  * On a 429 (quota), switches to GEMINI_API_KEY_2 for the same model, if set,
- * before moving on. Throws if every attempt fails -- callers use their
- * rule-based fallback.
+ * before moving on. Throws if every attempt fails, or with GeminiCapError
+ * once the hourly cap is used up -- callers use their rule-based fallback.
  *
  * @param {string} label  log prefix, e.g. "geminiRisk"
  * @param {object} modelParams  getGenerativeModel params minus `model`
@@ -71,6 +103,12 @@ export async function callGemini(label, modelParams, run) {
       );
 
       for (let attempt = 0; attempt <= delays.length; attempt++) {
+        const capped = capReason();
+        if (capped) {
+          console.warn(`[${label}] ${capped} -- not calling Gemini`);
+          throw new GeminiCapError(capped);
+        }
+        recentCalls.push(Date.now());
         try {
           const result = await run(model);
           if (modelName !== PRIMARY_MODEL || k > 0 || attempt > 0) {

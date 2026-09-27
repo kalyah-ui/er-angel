@@ -179,9 +179,15 @@ The server (Terraform in `infra/`, Docker Compose + Caddy in `deploy/`) serves, 
 | URL | What | Login |
 |---|---|---|
 | `https://dashboard.<server>` (and the original `https://<server>`) | Nurse dashboard | nurse login |
-| `https://kiosk.<server>` | Hosted kiosk (production build) | kiosk **device** login (separate) |
+| `https://kiosk.<server>` | Hosted kiosk (production build) | none (public) |
 
-Hostnames live only in the server's `.env` (`deploy/set-hosts.sh <root-host>`), so a custom domain is a config change. The hosted kiosk never contains the kiosk token; it calls `/api` on its own origin behind its device login and can only reach kiosk endpoints. The camera still comes from `presage-agent` on the laptop: add the hosted origin to `KIOSK_ORIGINS` in `presage-agent/.env` (see `presage-agent/.env.example`) -- otherwise the hosted kiosk falls back to demo mode. The laptop kiosk (`npm run dev`, `http://localhost:5173`) works exactly as before.
+Hostnames live only in the server's `.env` (`deploy/set-hosts.sh <root-host>`), so a custom domain is a config change. The hosted kiosk never contains the kiosk token; it calls `/api` on its own origin. Because it's public, it has guardrails:
+
+- Only kiosk endpoints are reachable (exact list in `deploy/Caddyfile`); the patient list, alerts, nurse calls and `/admin/reset` return 403.
+- Per-IP rate limits on its API traffic, e.g. 5 check-ins/min (`backend/src/logic/rateLimit.js`).
+- `/speak` only says the kiosk's own lines (`backend/src/logic/voiceLines.js`), for real patient numbers, so it can't be used to spend ElevenLabs credits.
+- At most `GEMINI_MAX_CALLS_PER_HOUR` Gemini requests per hour (default 60); beyond that, alerts are rule-based.
+ The camera still comes from `presage-agent` on the laptop: add the hosted origin to `KIOSK_ORIGINS` in `presage-agent/.env` (see `presage-agent/.env.example`) -- otherwise the hosted kiosk falls back to demo mode. The laptop kiosk (`npm run dev`, `http://localhost:5173`) works exactly as before.
 
 Redeploy: `scripts/deploy.ps1`. Request log: `scripts/logs.ps1`.
 

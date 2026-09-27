@@ -9,13 +9,19 @@
 #     - Browsers log in with the nurse login (DASHBOARD_USER/_PASSWORD_HASH).
 #     - The laptop kiosk (http://localhost:5173, cross-origin) sends
 #       X-Kiosk-Token instead, and only reaches kiosk endpoints.
-#   Kiosk host
-#     - Everything needs the kiosk DEVICE login (KIOSK_DEVICE_USER/_HASH),
-#       separate from the nurse login. The kiosk calls /api on its own origin,
-#       so no token is baked into its public bundle.
-#     - Even logged in, only kiosk endpoints are reachable -- not the patient
-#       list, alerts, or /admin/reset.
+#   Kiosk host -- PUBLIC, no login:
+#     - Only the kiosk endpoints below are reachable (403 otherwise) -- not the
+#       patient list, alerts, nurse calls, or /admin/reset. No token is baked
+#       into its bundle: it calls /api on its own origin.
+#     - Its API requests are marked X-ER-Angel-Public: kiosk, and the backend
+#       rate-limits those per client IP (backend/src/logic/rateLimit.js).
+#       /speak only says the kiosk's own lines; Gemini calls are capped per hour.
 #   Both: /api/health is open; the backend handles CORS.
+#
+# Kiosk endpoints, exactly (anchored: no trailing slash, no extra segments):
+#   /api/health  /api/checkin  /api/reading  /api/reading/patient/<n>
+#   /api/patients/<n>  /api/patients/<n>/recheck  /api/calls/pending
+#   /api/calls/<n>/announced  /api/speak
 #
 # docker-compose.yml refuses to start if any of these values is missing (an
 # empty token or hash would otherwise fail open).
@@ -45,10 +51,8 @@
 	}
 }
 
-(api) {
-	handle_path /api/* {
-		reverse_proxy {$BACKEND_UPSTREAM:backend:4000}
-	}
+(kiosk_api_paths) {
+	path_regexp ^/api/(health|checkin|reading|reading/patient/[0-9]+|patients/[0-9]+|patients/[0-9]+/recheck|calls/pending|calls/[0-9]+/announced|speak)$
 }
 
 # ---------- nurse dashboard ----------
@@ -63,7 +67,7 @@
 		}
 		not path /api/health
 		not {
-			path /api/checkin /api/reading /api/reading/* /api/patients/* /api/calls/* /api/speak
+			import kiosk_api_paths
 			header X-Kiosk-Token {$KIOSK_TOKEN}
 		}
 	}
@@ -72,7 +76,12 @@
 		{$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
 	}
 
-	import api
+	handle_path /api/* {
+		reverse_proxy {$BACKEND_UPSTREAM:backend:4000} {
+			# Only the kiosk host may mark requests as public-kiosk traffic.
+			header_up -X-ER-Angel-Public
+		}
+	}
 
 	handle {
 		root * {$SITE_ROOT:/srv}/dashboard
@@ -86,20 +95,22 @@
 	encode zstd gzip
 	import access_log
 
-	@needsDeviceLogin not path /api/health
-	basic_auth @needsDeviceLogin {
-		{$KIOSK_DEVICE_USER} {$KIOSK_DEVICE_PASSWORD_HASH}
-	}
-
 	@notKioskApi {
-		path /api/*
-		not path /api/checkin /api/reading /api/reading/* /api/patients/* /api/calls/* /api/speak /api/health
+		path /api /api/*
+		not {
+			import kiosk_api_paths
+		}
 	}
 
 	# route = run in this exact order.
 	route {
 		respond @notKioskApi "Not available on the kiosk" 403
-		import api
+		handle_path /api/* {
+			reverse_proxy {$BACKEND_UPSTREAM:backend:4000} {
+				# Set (not appended): the backend rate-limits requests marked this way.
+				header_up X-ER-Angel-Public kiosk
+			}
+		}
 		handle {
 			root * {$SITE_ROOT:/srv}/kiosk
 			try_files {path} /index.html

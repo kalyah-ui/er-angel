@@ -2,6 +2,9 @@
  * What the kiosk says on each screen. Plain data with no browser/Vite
  * dependencies, so `npm run voice:warm` in backend/ can import the exact
  * same lines to pre-generate their audio.
+ *
+ * The backend's POST /speak only accepts these lines: change one here and
+ * mirror it in backend/src/logic/voiceLines.js (backend tests check).
  */
 import { CAPTURE_SECONDS } from "./captureConfig.js";
 

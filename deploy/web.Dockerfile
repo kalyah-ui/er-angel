@@ -17,9 +17,9 @@ WORKDIR /app
 COPY frontend-kiosk/package.json frontend-kiosk/package-lock.json ./
 RUN npm ci
 COPY frontend-kiosk/ ./
-# Same-origin "/api" on the kiosk host; the kiosk device login (Caddy basic
-# auth) authorizes it. The kiosk token is deliberately NOT baked in -- a
-# public bundle would leak it. (The local kiosk on laptops still uses its
+# Same-origin "/api" on the kiosk host, which is public and only reaches
+# kiosk endpoints (see deploy/Caddyfile). The kiosk token is deliberately NOT
+# baked in -- a public bundle would leak it. (The local kiosk on laptops still uses its
 # own .env.local token, unchanged.)
 ENV VITE_API_URL=/api
 ENV VITE_KIOSK_TOKEN=

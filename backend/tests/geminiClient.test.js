@@ -1,6 +1,6 @@
 import test, { beforeEach } from "node:test";
 import assert from "node:assert";
-import { callGemini, geminiDisabledReason } from "../src/services/geminiClient.js";
+import { callGemini, geminiDisabledReason, GeminiCapError, resetGeminiCallCount } from "../src/services/geminiClient.js";
 import { classifyRisk } from "../src/services/geminiRisk.js";
 
 // Fake keys: these stubs never touch the network.
@@ -116,4 +116,36 @@ test("classifyRisk with GEMINI_ENABLED=false returns the rule-based result witho
   assert.strictEqual(result.risk_level, "high");
   assert.strictEqual(result.delta_summary, "HR up 38 bpm, RR up 1 breaths/min since triage.");
   assert.ok(Date.now() - started < 100, "no network call");
+});
+
+test("hourly cap: stops calling Gemini once GEMINI_MAX_CALLS_PER_HOUR attempts are used", async () => {
+  resetGeminiCallCount();
+  process.env.GEMINI_MAX_CALLS_PER_HOUR = "2";
+  try {
+    const { calls, run } = scripted([]);
+    assert.strictEqual(await callGemini("test", {}, run), "ok");
+    assert.strictEqual(await callGemini("test", {}, run), "ok");
+    assert.match(geminiDisabledReason(), /hourly cap/);
+    await assert.rejects(callGemini("test", {}, run), GeminiCapError);
+    assert.strictEqual(calls.length, 2, "no third request reached Gemini");
+  } finally {
+    delete process.env.GEMINI_MAX_CALLS_PER_HOUR;
+    resetGeminiCallCount();
+  }
+});
+
+test("hourly cap: retries count toward it, and 0 means rule-based only", async () => {
+  resetGeminiCallCount();
+  process.env.GEMINI_MAX_CALLS_PER_HOUR = "1";
+  try {
+    const { calls, run } = scripted([http(503)]);
+    await assert.rejects(callGemini("test", {}, run), GeminiCapError);
+    assert.strictEqual(calls.length, 1, "the retry was not sent");
+    process.env.GEMINI_MAX_CALLS_PER_HOUR = "0";
+    resetGeminiCallCount();
+    assert.match(geminiDisabledReason(), /hourly cap/);
+  } finally {
+    delete process.env.GEMINI_MAX_CALLS_PER_HOUR;
+    resetGeminiCallCount();
+  }
 });

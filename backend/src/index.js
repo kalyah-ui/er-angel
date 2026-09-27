@@ -13,6 +13,7 @@ import { callsRouter } from "./routes/calls.js";
 import { recheckAutoEnabled, startRecheckScheduler } from "./services/recheck.js";
 import { recheckTimeScale } from "./logic/recheck.js";
 import { startBackupScheduler } from "./services/dbBackup.js";
+import { publicKioskLimits } from "./logic/rateLimit.js";
 
 // CORS_ORIGINS (comma-separated) restricts which browser origins may call the
 // API cross-origin -- in production just the kiosk laptop. Unset = allow all
@@ -23,8 +24,13 @@ const corsOrigins = (process.env.CORS_ORIGINS ?? "")
   .filter(Boolean);
 
 const app = express();
+// Behind Caddy, req.ip comes from X-Forwarded-For -- trusted only from the
+// Docker network / localhost, so clients can't fake their IP for rate limits.
+app.set("trust proxy", "loopback, uniquelocal");
 app.use(cors(corsOrigins.length ? { origin: corsOrigins } : undefined));
 app.use(express.json());
+// Public hosted kiosk only (Caddy marks its requests): per-IP rate limits.
+app.use(publicKioskLimits());
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
