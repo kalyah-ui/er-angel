@@ -102,6 +102,9 @@ button {
 /* ---------- welcome ---------- */
 
 .welcome {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
   justify-content: space-between;
   align-items: center;
   text-align: center;
