@@ -21,8 +21,10 @@ if [ "${1:-}" != "--rotate" ] && grep -q '^KIOSK_DEVICE_PASSWORD_HASH=' "$ENV_FI
 fi
 
 umask 077
-# 24 characters from [A-Za-z0-9]: ~143 bits.
-password=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24)
+# 24 characters from [A-Za-z0-9]: ~143 bits. Finite input on purpose: reading
+# /dev/urandom through `head` would SIGPIPE and, with pipefail, abort here.
+password=$(head -c 96 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-24)
+[ "${#password}" -eq 24 ] || { echo "Couldn't generate a password -- nothing changed." >&2; exit 1; }
 # printf is a builtin: the password never appears in a process list.
 hash=$(printf '%s\n' "$password" | docker run --rm -i caddy:2-alpine caddy hash-password)
 case "$hash" in
