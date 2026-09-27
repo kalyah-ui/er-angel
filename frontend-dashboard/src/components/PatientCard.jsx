@@ -23,6 +23,7 @@ const VITALS = [
   { key: "heart_rate", label: "HR", digits: 0 },
   { key: "breathing_rate", label: "RR", digits: 0 },
   { key: "stress_score", label: "Stress", digits: 3 },
+  { key: "face_asymmetry_score", label: "Face asymmetry", digits: 4 },
 ];
 
 function formatAgo(timestamp) {
@@ -125,7 +126,7 @@ export default function PatientCard({ patient, risk, nextUp, onAcknowledge, onCa
           })}
         </tbody>
       </table>
-      <p className="units">HR in bpm · RR in breaths/min{latest ? "" : " · awaiting rescan"}</p>
+      <p className="units">HR in bpm · RR in breaths/min · face asymmetry score{latest ? "" : " · awaiting rescan"}</p>
     </article>
   );
 }
