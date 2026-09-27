@@ -13,10 +13,11 @@ export const PROMPTS = {
   checkedIn: ({ patient }) => `You're checked in. You are patient number ${patient.id}. Please have a seat.`,
   thanks: () => "Thank you. Please have a seat.",
   frontDesk: () => "Sorry, something went wrong. Please see the front desk.",
+  captureFailed: () => "We couldn't get a reading. Let's try again.",
 };
 
 // Lines that don't depend on the patient.
-export const FIXED_PROMPTS = ["checkin", "capture", "thanks", "frontDesk"];
+export const FIXED_PROMPTS = ["checkin", "capture", "thanks", "frontDesk", "captureFailed"];
 
 // PA announcements, by call type. Patient NUMBER only -- never the name,
 // on screen or in audio (privacy). `banner` is shown, `spoken` is said twice.

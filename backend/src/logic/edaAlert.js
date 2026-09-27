@@ -1,6 +1,29 @@
 const ROLLING_WINDOW_SIZE = 5;
 const RISING_CHECKINS_REQUIRED = 3;
 
+// EDA (stress_score) may only escalate a rescan -- and only to "medium" --
+// when heart rate or breathing rate has also risen meaningfully since the
+// triage baseline. Smaller moves are normal jitter and never count.
+export const EDA_ESCALATION = {
+  minHeartRateRise: 10, // bpm above baseline
+  minBreathingRateRise: 4, // breaths/min above baseline
+};
+
+const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
+
+/**
+ * Has HR or RR risen enough since the triage baseline for EDA to escalate?
+ * Missing (null) values never count as a rise.
+ */
+export function meaningfulVitalsRise({ baseline, current }) {
+  const hrRise = isNumber(baseline?.heart_rate) && isNumber(current?.heart_rate) ? current.heart_rate - baseline.heart_rate : null;
+  const rrRise =
+    isNumber(baseline?.breathing_rate) && isNumber(current?.breathing_rate) ? current.breathing_rate - baseline.breathing_rate : null;
+  const heartRate = hrRise !== null && hrRise >= EDA_ESCALATION.minHeartRateRise;
+  const breathingRate = rrRise !== null && rrRise >= EDA_ESCALATION.minBreathingRateRise;
+  return { heartRate, breathingRate, any: heartRate || breathingRate, hrRise, rrRise };
+}
+
 export function evaluateEdaAlert({ current, history }) {
   const previousReadings = history || [];
   const previousEdaValues = previousReadings

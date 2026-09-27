@@ -447,3 +447,19 @@ button {
 /* R key: recheck-reminder prompt (shares the manual panel's look) */
 .demo-dot-recheck { background: var(--calm); right: 24px; }
 .manual-error { margin: 8px 0 0; color: var(--danger); font-weight: 600; }
+/* capture failed: retry screen */
+.retry-actions { justify-content: center; margin-top: 12px; }
+.retry-actions .primary { flex: 0 1 260px; }
+
+/* capture: countdown paused by poor framing */
+.paused-notice {
+  max-width: 520px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--warn-soft);
+  border: 1px solid #ecd48a;
+  color: #6b4f00;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  text-align: center;
+}

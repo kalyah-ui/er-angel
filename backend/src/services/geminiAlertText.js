@@ -2,7 +2,9 @@ import { callGemini, geminiDisabledReason } from "./geminiClient.js";
 
 const SYSTEM_PROMPT = `Turn a clinical risk assessment into ONE short,
 plain-English line a busy ER nurse can scan in under 2 seconds. Style
-example: "Patient 4: HR up 35 bpm since triage, reassess." Do not use
+example: "Patient 4: HR up 35 bpm since triage, reassess." Never name a
+diagnosis or recommend specific tests, procedures, or treatments; describe
+changes and urgency only (e.g. reassess, escalate to physician). Do not use
 markdown, quotes, or a preamble -- output only the single line.`;
 
 /**

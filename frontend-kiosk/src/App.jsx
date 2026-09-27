@@ -3,12 +3,13 @@ import Welcome from "./screens/Welcome.jsx";
 import CheckInForm from "./screens/CheckInForm.jsx";
 import RescanLookup from "./screens/RescanLookup.jsx";
 import Capture from "./screens/Capture.jsx";
+import CaptureFailed from "./screens/CaptureFailed.jsx";
 import Message from "./screens/Message.jsx";
 import DemoControls from "./components/DemoControls.jsx";
 import MuteToggle from "./components/MuteToggle.jsx";
 import AnnouncementBanner from "./components/AnnouncementBanner.jsx";
 import { checkIn, getBaseline, getPatient, submitReading, triggerRecheck, NotFoundError } from "./api/client.js";
-import { acquireVitals, CaptureCancelledError } from "./lib/capture.js";
+import { acquireVitals, CaptureCancelledError, CaptureFailedError } from "./lib/capture.js";
 import { isAgentAvailable } from "./lib/presage.js";
 import { useAnnouncer } from "./lib/useAnnouncer.js";
 import { isMuted, playPrompt, setMuted, unlockAudio } from "./lib/voice.js";
@@ -161,16 +162,26 @@ export default function App() {
     setScreen({ name: mode === "baseline" ? "checkedIn" : "thanks", patient: savedPatient });
   }
 
-  async function handleCheckIn(form) {
-    const id = ++flowId.current;
+  // Runs a capture flow and routes how it ended. Cancelled: nothing to do
+  // (handleCancelCapture already went home). Agent reachable but no reading:
+  // "We couldn't get a reading" with a retry of the same capture -- nothing
+  // is stored, and D/M overrides armed meanwhile apply to the retry.
+  // Anything else (e.g. backend down): front desk.
+  async function startCapture(args, id = ++flowId.current) {
     try {
-      await runCapture(id, { mode: "baseline", patient: form, baseline: null, createPatient: true });
+      await runCapture(id, args);
     } catch (err) {
-      // User hit Cancel mid-capture -- handleCancelCapture already sent them
-      // home, so there's nothing left to do here.
-      if (err instanceof CaptureCancelledError) return;
-      if (flowId.current === id) showFrontDesk(err);
+      if (err instanceof CaptureCancelledError || flowId.current !== id) return;
+      if (err instanceof CaptureFailedError) {
+        setScreen({ name: "captureFailed", retry: args });
+        return;
+      }
+      showFrontDesk(err);
     }
+  }
+
+  function handleCheckIn(form) {
+    return startCapture({ mode: "baseline", patient: form, baseline: null, createPatient: true });
   }
 
   // Unknown patient numbers are rethrown so the lookup form can show them inline.
@@ -185,14 +196,15 @@ export default function App() {
       return;
     }
 
+    let baseline;
     try {
-      const baseline = await getBaseline(patient.id);
-      if (flowId.current !== id) return;
-      await runCapture(id, { mode: "rescan", patient, baseline });
+      baseline = await getBaseline(patient.id);
     } catch (err) {
-      if (err instanceof CaptureCancelledError) return;
       if (flowId.current === id) showFrontDesk(err);
+      return;
     }
+    if (flowId.current !== id) return;
+    await startCapture({ mode: "rescan", patient, baseline }, id);
   }
 
   function renderScreen() {
@@ -203,6 +215,8 @@ export default function App() {
         return <RescanLookup onSubmit={handleRescan} onCancel={goHome} />;
       case "capture":
         return <Capture {...screen} onCancel={handleCancelCapture} />;
+      case "captureFailed":
+        return <CaptureFailed onRetry={() => startCapture(screen.retry)} onCancel={goHome} />;
       case "checkedIn":
         return (
           <Message

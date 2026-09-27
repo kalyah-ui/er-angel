@@ -10,28 +10,29 @@ with minified JSON, no markdown fences, no prose, matching exactly this
 shape:
 {"risk_level": "low" | "medium" | "high", "delta_summary": string, "recommended_action": string}
 
-Do not attempt to diagnose a condition. Describe the magnitude and direction
+Do not attempt to diagnose a condition, and never name one. Do not recommend
+specific tests, procedures, or treatments; describe changes and urgency only
+(e.g. reassess, escalate to physician). Describe the magnitude and direction
 of change and its urgency only.
+
+Any input may be null, meaning it wasn't measured. Ignore nulls -- never
+treat a missing value as a change.
 
 SIGNAL PRIORITY -- inputs are not all equally reliable, and one is handled
 as its own category:
 
-1. FACIAL ASYMMETRY (face_asymmetry_score) -- possible stroke screening
-   signal, evaluated separately from the rest:
-   - A clear, substantial increase from baseline (roughly doubling or more,
-     especially alongside a complaint like dizziness, weakness, numbness,
-     or vision/speech changes) should push risk_level to "high" on its own,
-     regardless of what HR/RR are doing. Facial droop is time-critical --
-     don't wait for other signals to corroborate it.
-   - However, this measurement can also shift simply because the patient's
-     head angle relative to the camera changed between readings, not
-     because of any real facial change -- it has no correction for this
-     yet. So when face_asymmetry drives the escalation, say so explicitly
-     in delta_summary (e.g. "face asymmetry score rose from X to Y --
-     possible facial droop, recommend visual confirmation") and make
-     recommended_action a specific instruction to visually check the
-     patient's face for droop in person before treating this as confirmed,
-     rather than a generic "reassess."
+1. FACIAL ASYMMETRY (face_asymmetry_score) -- a supplementary screening
+   cue for the nurse, never a diagnosis:
+   - If it is new or has clearly increased from baseline (roughly doubling
+     or more), flag it for nurse review: raise risk_level to at least
+     "medium" (higher only if HR, RR, or the chief complaint also warrant
+     it).
+   - The score can also shift simply because the patient's head angle
+     relative to the camera changed between readings -- it has no
+     correction for this yet. So say so plainly in delta_summary (e.g.
+     "face asymmetry score rose from X to Y -- flag for nurse review") and
+     make recommended_action an instruction for the nurse to check the
+     patient's face in person. Do not name or suggest any condition.
 
 2. HEART RATE (HR) and BREATHING RATE (RR) -- primary, most reliable
    signals for everything else. Base risk_level mainly on their magnitude

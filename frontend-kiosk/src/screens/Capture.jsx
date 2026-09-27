@@ -182,7 +182,7 @@ export default function Capture({ mode, durationMs, startedAt, saving, onCancel 
   let status;
   if (saving) status = "Saving your reading…";
   else if (secondsLeft == null) status = "Getting ready…";
-  else if (blocking) status = "Adjust your position…";
+  else if (blocking) status = "Countdown paused -- it continues when you're back in position";
   else if (secondsLeft > 0) status = "Measuring… please stay still";
   else status = "Almost done…";
 
@@ -244,7 +244,7 @@ export default function Capture({ mode, durationMs, startedAt, saving, onCancel 
               {counting ? (
                 <>
                   <span className="ring-seconds">{secondsLeft}</span>
-                  <span className="ring-unit">seconds</span>
+                  <span className="ring-unit">{blocking ? "paused" : "seconds"}</span>
                 </>
               ) : (
                 <span className="ring-dots" aria-hidden="true">•••</span>
@@ -287,7 +287,7 @@ export default function Capture({ mode, durationMs, startedAt, saving, onCancel 
             {counting ? (
               <>
                 <span className="ring-seconds">{secondsLeft}</span>
-                <span className="ring-unit">seconds</span>
+                <span className="ring-unit">{blocking ? "paused" : "seconds"}</span>
               </>
             ) : (
               <span className="ring-dots" aria-hidden="true">•••</span>
@@ -298,10 +298,13 @@ export default function Capture({ mode, durationMs, startedAt, saving, onCancel 
 
       <p className="status">{status}</p>
 
-      {hint && !previewAvailable && (
-        <p className="framing-hint" role="alert">
-          {hint}
-        </p>
+      {/* Poor framing pauses the countdown (the agent only counts good
+          seconds) -- say so, so a stopped timer doesn't look like a hang. */}
+      {blocking && !saving && (
+        <div className="paused-notice" role="status" aria-live="polite">
+          <strong>Paused.</strong> {hint.replace(/\.\s*$/, "")}. The countdown picks up again as soon as you're back in position -- no need
+          to start over.
+        </div>
       )}
 
       {!saving && (

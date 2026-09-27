@@ -1,7 +1,7 @@
 import { db } from "../db/db.js";
 import { classifyRisk } from "./geminiRisk.js";
 import { generateAlertLine } from "./geminiAlertText.js";
-import { evaluateEdaAlert } from "../logic/edaAlert.js";
+import { evaluateEdaAlert, meaningfulVitalsRise } from "../logic/edaAlert.js";
 import { cancelPendingRechecks } from "./calls.js";
 import { toSqliteUtc } from "../logic/sqliteTime.js";
 
@@ -39,41 +39,41 @@ export function insertAlert(patientId, readingId, { risk_level, delta_summary, r
 }
 
 /**
- * EDA (stress_score) escalation from Presage: at least medium, high if HR/RR
- * are also rising or Gemini already said high; explains why in the summary.
+ * EDA (stress_score) escalation from Presage. Only called when EDA triggered
+ * AND heart rate or breathing rate rose meaningfully since triage (see
+ * EDA_ESCALATION): raises the risk to "medium", never lowers it, and says why.
  */
-function applyEdaAlert(riskJson, edaAlert) {
-  const pairedVitals = edaAlert.accompanyingVitalsIncreasing;
-
-  // Only escalate when corroborated by rising HR/RR -- isolated EDA
-  // movement alone shouldn't override Gemini's own judgment, since EDA
-  // is noisier and less clinically established than HR/RR/asymmetry.
-  if (!pairedVitals) {
-    return riskJson; // leave Gemini's assessment untouched
-  }
-
+function applyEdaAlert(riskJson, edaAlert, rise, currentEda) {
+  // Absolute values, not percentages: EDA baselines sit near zero, where
+  // percentages exaggerate tiny changes.
   const edaReason = edaAlert.aboveBaseline
-    ? `EDA is ${Math.round(edaAlert.percentAboveBaseline)}% above its rolling baseline`
+    ? `EDA ${currentEda.toFixed(3)} vs rolling baseline ${edaAlert.rollingBaseline.toFixed(3)}`
     : "EDA has risen for 3 consecutive check-ins";
-  const increasingVitals = [
-    edaAlert.heartRateIncreasing ? "heart rate" : null,
-    edaAlert.breathingRateIncreasing ? "breathing rate" : null,
+  const vitals = [
+    rise.heartRate ? `HR up ${Math.round(rise.hrRise)} bpm` : null,
+    rise.breathingRate ? `RR up ${Math.round(rise.rrRise)} breaths/min` : null,
   ].filter(Boolean).join(" and ");
 
   return {
     ...riskJson,
-    // Escalate, never downgrade below what Gemini already concluded.
     risk_level: riskJson.risk_level === "high" ? "high" : "medium",
-    delta_summary: `${riskJson.delta_summary} EDA alert: ${edaReason}, with increasing ${increasingVitals}.`,
-    recommended_action: "Prompt nurse reassessment due to concurrent EDA and vital-sign increases.",
+    delta_summary: `${riskJson.delta_summary} EDA alert: ${edaReason}, with ${vitals} since triage.`,
+    recommended_action: "Reassess the patient: EDA and vital signs are rising together.",
   };
 }
 
+const vitalsForGemini = (r) => ({
+  heart_rate: r.heart_rate ?? null,
+  breathing_rate: r.breathing_rate ?? null,
+  stress_score: r.stress_score ?? null,
+  face_asymmetry_score: r.face_asymmetry_score ?? null,
+});
+
 /**
  * Stores a vitals reading. For a rescan (non-baseline), compares it to the
- * patient's baseline via Gemini, applies the EDA check (rising stress_score
- * over the last few readings), and stores the resulting alert. Used by
- * POST /reading, i.e. real kiosk scans.
+ * patient's baseline via Gemini (HR, RR, EDA, face asymmetry), applies the
+ * EDA check (rising stress_score over the last few readings), and stores the
+ * resulting alert. Used by POST /reading, i.e. real kiosk scans.
  *
  * Any new reading restarts the patient's recheck timer (and clears a missed
  * recheck); a reminder still queued for them is dropped.
@@ -107,21 +107,17 @@ export async function recordReading(patient, vitals, now = new Date()) {
   const edaAlert = evaluateEdaAlert({ current: { heart_rate, breathing_rate, stress_score }, history });
 
   let riskJson = await classifyRisk({
-    baseline: baseline
-      ? { heart_rate: baseline.heart_rate, breathing_rate: baseline.breathing_rate, stress_score: baseline.stress_score }
-      : null,
-    current: { heart_rate, breathing_rate, stress_score },
+    baseline: baseline ? vitalsForGemini(baseline) : null,
+    current: vitalsForGemini(vitals),
     chiefComplaint: patient.chief_complaint,
     minutesElapsed,
   });
 
-  // Only escalate when EDA is corroborated by rising HR/RR -- isolated
-  // EDA movement alone shouldn't override or bypass Gemini's own
-  // assessment. This must match the condition applyEdaAlert uses
-  // internally, since that's what actually determines whether riskJson
-  // was modified.
-  const edaEscalated = edaAlert.triggered && edaAlert.accompanyingVitalsIncreasing;
-  if (edaEscalated) riskJson = applyEdaAlert(riskJson, edaAlert);
+  // EDA alone never escalates: only with a meaningful HR/RR rise since
+  // triage (EDA_ESCALATION), and then only to "medium".
+  const rise = meaningfulVitalsRise({ baseline, current: { heart_rate, breathing_rate } });
+  const edaEscalated = edaAlert.triggered && rise.any;
+  if (edaEscalated) riskJson = applyEdaAlert(riskJson, edaAlert, rise, stress_score);
 
   const label = `Patient ${patient.id}`;
   const reason_text = edaEscalated

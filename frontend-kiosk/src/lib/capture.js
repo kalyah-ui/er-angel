@@ -11,6 +11,16 @@ import {
 
 export { CaptureCancelledError };
 
+// The agent was reachable but couldn't produce a reading (failed, timed out,
+// or busy). The kiosk shows "We couldn't get a reading" with a retry button;
+// nothing is stored.
+export class CaptureFailedError extends Error {
+  constructor(reason) {
+    super(`capture failed: ${reason}`);
+    this.name = "CaptureFailedError";
+  }
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Like sleep(), but rejects with CaptureCancelledError as soon as `signal`
@@ -39,8 +49,11 @@ function sleepAbortable(ms, signal) {
  * Gets vitals for one capture, in priority order:
  *   1. manual override (M panel)             -> typed values
  *   2. elevated override (D), rescans only   -> baseline + HR 35 / RR 5
- *   3. Presage agent, if reachable           -> real capture
- *   4. otherwise ("demo mode")               -> mock vitals near baseline
+ *   3. Presage agent, if reachable           -> real capture; if it fails,
+ *      times out, or is busy: tell the agent to cancel (releases the camera)
+ *      and throw CaptureFailedError -- never mock vitals for a real patient
+ *   4. agent unreachable ("demo mode": a dev laptop with no agent)
+ *                                            -> mock vitals near baseline
  *
  * `onStart(durationMs)` fires when the on-screen countdown should begin.
  *
@@ -75,16 +88,14 @@ export async function acquireVitals({ mode, baseline, override, onStart, signal 
     try {
       return { vitals: await captureFromAgent({ signal }), source: "presage" };
     } catch (err) {
-      if (err instanceof CaptureCancelledError) {
-        // Aborting our own fetch above only tears down the client side of
-        // the request -- explicitly tell the agent to stop too, so the SDK
-        // and camera actually release rather than running to completion
-        // server-side after the kiosk has moved on.
-        cancelCapture();
-        throw err;
-      }
-      console.warn(`[kiosk] DEMO MODE: Presage capture failed (${err.message}) -- using mock vitals`);
-      return { vitals: mockVitals(baseline), source: "mock" };
+      // Whether the user cancelled, the kiosk timed out, or the agent failed:
+      // aborting our own fetch only tears down the client side, so tell the
+      // agent to stop too -- the SDK and camera must be released before the
+      // next capture (otherwise it answers 409 busy). No-op if it's idle.
+      cancelCapture();
+      if (err instanceof CaptureCancelledError) throw err;
+      console.warn(`[kiosk] Presage capture failed (${err.message}) -- asking the patient to try again`);
+      throw new CaptureFailedError(err.message);
     }
   }
 

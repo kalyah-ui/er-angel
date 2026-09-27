@@ -17,9 +17,9 @@ function demoPatients() {
       alert: (label) => ({
         risk_level: "high",
         delta_summary:
-          "Heart rate increased from 72 to 110 bpm (+38, new tachycardia); respiratory rate stable (14 to 15 breaths/min).",
-        reason_text: `${label}: HR up 38 bpm with chest tightness, get ECG and reassess immediately.`,
-        recommended_action: "Immediate clinical re-evaluation and 12-lead ECG for new tachycardia with chest tightness.",
+          "Heart rate up 38 bpm since triage (72 to 110), now above 100; respiratory rate stable (14 to 15 breaths/min). Chest tightness reported.",
+        reason_text: `${label}: HR up 38 bpm with chest tightness, reassess immediately.`,
+        recommended_action: "Reassess immediately and escalate to a physician: large heart-rate rise with chest tightness.",
       }),
     },
     {
@@ -30,9 +30,9 @@ function demoPatients() {
       alert: (label) => ({
         risk_level: "medium",
         delta_summary:
-          "Heart rate up 18 bpm (70 to 88) and respiratory rate up 5 breaths/min (14 to 19), consistent with worsening pain.",
-        reason_text: `${label}: HR up 18 bpm, RR up 5 since triage, reassess pain.`,
-        recommended_action: "Reassess pain level and consider analgesia; recheck vitals in 15 minutes.",
+          "Heart rate up 18 bpm (70 to 88) and respiratory rate up 5 breaths/min (14 to 19) since triage; patient reports worsening pain.",
+        reason_text: `${label}: HR up 18 bpm, RR up 5 since triage, reassess.`,
+        recommended_action: "Reassess the patient and recheck vitals in 15 minutes.",
       }),
     },
     {

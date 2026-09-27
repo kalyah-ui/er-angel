@@ -19,17 +19,16 @@
  *
  * The agent owns the camera, so the kiosk must not open it too.
  */
-import { CAPTURE_SECONDS } from "./captureConfig.js";
+import { CAPTURE_SECONDS, KIOSK_CAPTURE_TIMEOUT_SECONDS } from "./captureConfig.js";
 
 const AGENT_URL = import.meta.env.VITE_PRESAGE_URL || "http://localhost:4600";
 
-// Capture length lives in captureConfig.js (the one place to change it).
+// Capture timing lives in captureConfig.js (the one place to change it).
 export const CAPTURE_DURATION_MS = CAPTURE_SECONDS * 1000;
 
-// Headroom for agent startup/processing on top of the capture itself; after
-// this we give up on the agent and use mock vitals instead.
-const CAPTURE_TIMEOUT_BUFFER_MS = 15000;
-const CAPTURE_TIMEOUT_MS = CAPTURE_DURATION_MS + CAPTURE_TIMEOUT_BUFFER_MS;
+// Longer than the agent's own maximum (poor framing pauses the countdown), so
+// the kiosk never gives up while the agent is still legitimately capturing.
+const CAPTURE_TIMEOUT_MS = KIOSK_CAPTURE_TIMEOUT_SECONDS * 1000;
 const HEALTH_TIMEOUT_MS = 1500;
 const STATUS_TIMEOUT_MS = 1500;
 const CANCEL_TIMEOUT_MS = 1500;
