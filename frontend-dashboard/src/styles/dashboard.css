@@ -1,200 +1,308 @@
-/* Light, high-contrast theme: dark UIs wash out on projectors. */
+/*
+ * Clinical, low-noise theme: neutral slate greys, one deep-blue accent, 1px
+ * hairlines instead of shadows. Risk colour only as a thin left rule and a
+ * small-caps label. Light background: dark UIs wash out on projectors.
+ * Spacing is on an 8px grid (4px for tight pairs).
+ */
 :root {
-  --bg: #f3f5f8;
+  --page: #f6f7f9;
   --surface: #ffffff;
-  --text: #16202e;
-  --muted: #5b6878;
-  --line: #dde3ea;
+  --subtle: #f1f3f6;
+  --text: #0f172a;
+  --text-2: #334155; /* secondary text: still high contrast */
+  --label: #475569; /* small uppercase labels */
+  --line: #e2e6eb;
+  --line-strong: #cbd2da;
 
-  --low: #1f8a4c;
-  --low-tint: #eaf6ef;
-  --medium: #b7791f;
-  --medium-tint: #fdf5e4;
-  --high: #c8322f;
-  --high-tint: #fdeceb;
+  --accent: #1e3a8a;
+  --accent-hover: #172e6e;
+  --accent-soft: #eef2fb;
 
-  --accent: #1d4f91;
+  --high: #b42318;
+  --medium: #a15c07;
+  --low: #3f6f55;
+  --missed: #a15c07;
+
+  --radius: 6px;
+  --radius-lg: 8px;
+  --ease: 150ms ease;
+
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--page);
+  -webkit-font-smoothing: antialiased;
 }
 
 * { box-sizing: border-box; }
 
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 18px;
-  line-height: 1.4;
-  background: var(--bg);
-  color: var(--text);
+/* rem stays 16px, so 0.75rem labels are 12px; body text is 15px. */
+body { margin: 0; font-size: 0.9375rem; background: var(--page); }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
-.dashboard {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 24px clamp(16px, 3vw, 40px) 48px;
-}
+/* ---------- top bar ---------- */
 
-/* ---------- header ---------- */
-
-.header {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  justify-content: space-between;
-  align-items: flex-end;
-  padding-bottom: 20px;
-  margin-bottom: 24px;
-  border-bottom: 1px solid var(--line);
-}
-.header h1 {
-  margin: 0;
-  font-size: 2rem;
-  letter-spacing: -0.01em;
-  color: var(--accent);
-}
-.subtitle { margin: 2px 0 0; color: var(--muted); }
-
-.header-meta {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.alert-count {
-  font-weight: 600;
-  color: var(--muted);
-}
-.alert-count.has-alerts { color: var(--high); }
-
-.reset-button {
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--muted);
-  cursor: pointer;
-}
-.reset-button:hover { border-color: var(--muted); color: var(--text); }
-.reset-button.reset-confirm,
-.reset-button.reset-failed {
-  background: var(--high);
-  border-color: var(--high);
-  color: #fff;
-}
-.reset-button:disabled { opacity: 0.6; cursor: wait; }
-
-.banner {
+.topbar {
   position: sticky;
   top: 0;
   z-index: 10;
-  margin: 0 0 16px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: #fff6db;
-  border: 1px solid #ecd48a;
-  color: #6b4f00;
-  font-size: 0.9rem;
-  font-weight: 600;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.topbar-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 8px clamp(16px, 3vw, 32px);
+  min-height: 56px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
 }
 
-.empty { color: var(--muted); font-size: 1.1rem; }
+.brand { display: flex; align-items: baseline; gap: 8px; }
+.wordmark {
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.brand-sub { font-size: 0.9375rem; color: var(--text-2); }
 
-/* ---------- patient cards ---------- */
+.topbar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+}
+
+.header-stats {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 0.9375rem;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.stat-sep {
+  margin: 0 8px;
+  color: var(--label);
+  white-space: pre;
+}
+.stat-high { color: var(--high); font-weight: 600; }
+.stat-missed { color: var(--missed); font-weight: 600; }
+.alert-count.has-alerts { color: var(--text); font-weight: 600; }
+
+.clock {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quiet text button; turns red while it's asking for confirmation. */
+.reset-button {
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  margin: -4px -8px -4px 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color var(--ease), border-color var(--ease), background-color var(--ease);
+}
+.reset-button:hover { color: var(--text); background: var(--subtle); }
+.reset-button.reset-confirm,
+.reset-button.reset-failed {
+  color: var(--high);
+  border-color: currentColor;
+  background: var(--surface);
+}
+.reset-button:disabled { cursor: wait; color: var(--label); }
+
+/* Reconnecting: slim strip under the top bar (it's sticky with it). */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px clamp(16px, 3vw, 32px);
+  border-top: 1px solid #ecdcb8;
+  background: #fbf6ea;
+  color: #5c3d06;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+.banner-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--medium);
+}
+
+/* ---------- layout ---------- */
+
+.content {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px clamp(16px, 3vw, 32px) 48px;
+}
+
+.empty { margin: 0; color: var(--text-2); font-size: 1rem; }
 
 .patient-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
+  align-items: start;
 }
+
+/* ---------- patient card ---------- */
 
 .patient-card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 20px;
-  border-radius: 12px;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px 16px 16px 20px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-top: 8px solid var(--low);
-  box-shadow: 0 1px 2px rgba(22, 32, 46, 0.06);
+  border-left: 3px solid var(--low);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--ease);
 }
-.patient-card.risk-medium { border-top-color: var(--medium); background: var(--medium-tint); }
-.patient-card.risk-high { border-top-color: var(--high); background: var(--high-tint); }
-
-.patient-card.pulse { animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 50, 47, 0); }
-  50% { box-shadow: 0 0 0 6px rgba(200, 50, 47, 0.25); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .patient-card.pulse { animation: none; box-shadow: 0 0 0 4px rgba(200, 50, 47, 0.25); }
-}
+.patient-card.risk-medium { border-left-color: var(--medium); }
+.patient-card.missed:not(.risk-high) { border-left-color: var(--missed); }
+.patient-card.risk-high { border-left-color: var(--high); }
 
 .card-header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 8px 16px;
+  flex-wrap: wrap;
 }
-.patient-name { margin: 0; font-size: 1.35rem; }
-.complaint { margin: 2px 0 0; color: var(--muted); }
+.identity { min-width: 0; flex: 1 1 180px; }
+.patient-title {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.patient-number {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.patient-name { overflow-wrap: anywhere; }
+.complaint {
+  margin: 4px 0 0;
+  font-size: 0.9375rem;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
 
 .card-header-right {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
+  gap: 4px;
 }
-.wait-time { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+.status-labels {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 8px;
+}
+.wait-time {
+  font-size: 0.875rem;
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 
-.risk-pill {
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 3px 10px;
-  border-radius: 999px;
-  color: #fff;
+/* Small-caps status labels: text + hairline, never a coloured fill. */
+.status-label,
+.next-up {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  white-space: nowrap;
 }
-.risk-pill-low { background: var(--low); }
-.risk-pill-medium { background: var(--medium); }
-.risk-pill-high { background: var(--high); }
+.risk-label-high { color: var(--high); }
+.risk-label-medium { color: var(--medium); }
+.risk-label-low { color: var(--low); }
+.status-missed { color: var(--missed); }
+.next-up { color: var(--accent); background: var(--accent-soft); border-color: #c9d4ee; }
+
+/* Calm pulse beside HIGH until the alert is acknowledged. */
+.pulse-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--high);
+}
+.pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--high);
+  animation: pulse-ring 2s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.5; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+
+.missed-flag {
+  margin: -8px 0 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--missed);
+}
 
 /* ---------- alert ---------- */
 
 .alert-block {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px;
-  border-radius: 8px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  gap: 4px;
 }
 .reason {
   margin: 0;
-  font-size: 1.2rem;
-  font-weight: 700;
-  line-height: 1.3;
-}
-.risk-high .reason { color: #8f1f1c; }
-.action { margin: 0; font-size: 0.9rem; color: var(--muted); }
-
-.ack-button {
-  align-self: flex-start;
-  margin-top: 6px;
-  font: inherit;
-  font-size: 0.95rem;
+  font-size: 1.125rem;
   font-weight: 600;
-  padding: 8px 18px;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+  color: var(--text);
 }
-.ack-button:hover { background: #163d70; }
-.acked { margin: 6px 0 0; font-size: 0.85rem; font-weight: 600; color: var(--low); }
+.action { margin: 0; font-size: 0.9375rem; color: var(--text-2); }
 
 /* ---------- vitals ---------- */
 
@@ -202,74 +310,117 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
+  border-top: 1px solid var(--line);
 }
 .vitals th,
 .vitals td {
-  padding: 6px 8px;
+  padding: 4px 8px;
   text-align: right;
   border-bottom: 1px solid var(--line);
+  white-space: nowrap;
 }
-.vitals thead th {
+.vitals th:first-child { padding-left: 0; text-align: left; }
+.vitals th:last-child,
+.vitals td:last-child { padding-right: 0; }
+.vitals thead th,
+.vitals tbody th {
   font-size: 0.75rem;
   font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
+  color: var(--label);
 }
-.vitals tbody th { text-align: left; font-weight: 600; color: var(--muted); }
-.vitals td { font-size: 1.15rem; font-weight: 600; }
-.delta { font-size: 0.85rem; font-weight: 500; color: var(--muted); }
-.units { margin: -6px 0 0; font-size: 0.75rem; color: var(--muted); }
+.vitals thead th { padding-top: 8px; padding-bottom: 4px; }
+.vitals td { font-size: 0.9375rem; color: var(--text-2); }
+.vitals td.latest { font-size: 1rem; font-weight: 600; color: var(--text); }
 
-/* ---------- calling patients ---------- */
+.delta { font-size: 0.875rem; font-weight: 500; color: var(--text-2); }
+.delta-up { color: var(--high); }
+.delta-none { color: var(--label); }
 
-.next-up {
-  display: inline-block;
-  margin-bottom: 6px;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
+.units { margin: -8px 0 0; font-size: 0.875rem; color: var(--label); }
 
-.call-row {
+/* ---------- footer: status + actions ---------- */
+
+.card-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 16px;
+  padding-top: 16px;
+  margin-top: -4px;
+  border-top: 1px solid var(--line);
 }
-.call-status { font-size: 0.9rem; color: var(--muted); font-weight: 600; }
-.call-button {
+.call-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.875rem;
+  color: var(--text-2);
+}
+.called-ago { font-weight: 600; color: var(--text); }
+.recheck-due { color: var(--medium); font-weight: 600; }
+.acked {
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--low);
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.button {
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.2;
   padding: 8px 16px;
-  border-radius: 8px;
-  border: 2px solid var(--accent);
-  background: var(--surface);
-  color: var(--accent);
+  min-height: 36px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
   cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--ease), border-color var(--ease), color var(--ease);
 }
-.call-button:hover { background: var(--accent); color: #fff; }
-.call-button.called { border-color: var(--line); color: var(--muted); }
-.call-button.called:hover { border-color: var(--accent); background: var(--surface); color: var(--accent); }
+.button:focus-visible,
+.reset-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.button-primary { background: var(--accent); color: #fff; }
+.button-primary:hover { background: var(--accent-hover); }
+.button-secondary {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.button-secondary:hover { border-color: var(--accent); color: var(--accent); }
 
-/* ---------- recheck reminders ---------- */
+/* ---------- small screens ---------- */
 
-.recheck { display: block; margin-top: 2px; font-weight: 500; }
-.recheck-due { color: var(--medium); font-weight: 700; }
+@media (max-width: 520px) {
+  .topbar-meta { width: 100%; justify-content: space-between; gap: 8px 16px; }
+  /* Wrapping would leave a dangling "·": space the items instead. */
+  .header-stats { flex: 1 1 100%; gap: 0 16px; }
+  .stat-sep { display: none; }
+  .card-header-right { align-items: flex-start; }
+  .status-labels { justify-content: flex-start; }
+  .card-actions { width: 100%; }
+  .card-actions .button { flex: 1 1 0; }
+}
 
-.patient-card.missed { box-shadow: 0 0 0 3px var(--medium); }
-.missed-flag {
-  margin: 0;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: #fbe7bf;
-  border: 1px solid var(--medium);
-  color: #6b4400;
-  font-weight: 700;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after { transition: none !important; }
+  .pulse-dot::after { animation: none; opacity: 0; }
+  .pulse-dot { box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.25); }
 }

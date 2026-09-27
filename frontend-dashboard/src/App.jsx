@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import PatientList from "./components/PatientList.jsx";
+import PatientList, { riskOf } from "./components/PatientList.jsx";
+import Clock from "./components/Clock.jsx";
 import { fetchPatients, fetchAlerts, acknowledgeAlert, callPatient, resetDemo, poll } from "./api/client.js";
 
 const POLL_INTERVAL_MS = 5000;
@@ -88,6 +89,8 @@ export default function App() {
   }
 
   const openAlertCount = alerts.filter((a) => !Number(a.acknowledged)).length;
+  const highCount = patients.filter((p) => riskOf(p) === "high").length;
+  const missedCount = patients.filter((p) => p.missed_recheck).length;
 
   const resetLabel = {
     idle: "Reset demo",
@@ -98,33 +101,46 @@ export default function App() {
 
   return (
     <div className="dashboard">
-      {connected === false && (
-        <div className="banner" role="status">
-          Reconnecting to backend… showing last known data
-          {lastUpdated && ` from ${lastUpdated.toLocaleTimeString()}`}
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <span className="wordmark">ER Angel</span>
+            <span className="brand-sub">Waiting room</span>
+          </div>
+          <div className="topbar-meta">
+            <p className="header-stats">
+              <span>{patients.length} waiting</span>
+              <span className="stat-sep" aria-hidden="true"> · </span>
+              <span className={highCount ? "stat-high" : undefined}>{highCount} high</span>
+              <span className="stat-sep" aria-hidden="true"> · </span>
+              <span className={missedCount ? "stat-missed" : undefined}>
+                {missedCount} missed {missedCount === 1 ? "recheck" : "rechecks"}
+              </span>
+              <span className="stat-sep" aria-hidden="true"> · </span>
+              <span className={`alert-count${openAlertCount ? " has-alerts" : ""}`}>
+                {openAlertCount} open {openAlertCount === 1 ? "alert" : "alerts"}
+              </span>
+            </p>
+            <Clock />
+            <button
+              className={`reset-button reset-${resetState}`}
+              onClick={handleReset}
+              disabled={resetState === "working"}
+            >
+              {resetLabel}
+            </button>
+          </div>
         </div>
-      )}
-
-      <header className="header">
-        <div>
-          <h1>ER Angel</h1>
-          <p className="subtitle">Waiting room monitor</p>
-        </div>
-        <div className="header-meta">
-          <span className={`alert-count${openAlertCount ? " has-alerts" : ""}`}>
-            {openAlertCount} open {openAlertCount === 1 ? "alert" : "alerts"}
-          </span>
-          <button
-            className={`reset-button reset-${resetState}`}
-            onClick={handleReset}
-            disabled={resetState === "working"}
-          >
-            {resetLabel}
-          </button>
-        </div>
+        {connected === false && (
+          <div className="banner" role="status">
+            <span className="banner-dot" aria-hidden="true" />
+            Reconnecting to backend… showing last known data
+            {lastUpdated && ` from ${lastUpdated.toLocaleTimeString()}`}
+          </div>
+        )}
       </header>
 
-      <main>
+      <main className="content">
         {connected === null ? (
           <p className="empty">Connecting…</p>
         ) : (

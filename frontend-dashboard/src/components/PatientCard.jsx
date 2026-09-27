@@ -20,11 +20,19 @@ function minutesSince(timestamp) {
 
 // Stress is Presage EDA -- small fractions like 0.039, so it needs decimals.
 const VITALS = [
-  { key: "heart_rate", label: "HR", digits: 0 },
-  { key: "breathing_rate", label: "RR", digits: 0 },
-  { key: "stress_score", label: "Stress", digits: 3 },
-  { key: "face_asymmetry_score", label: "Face asymmetry", digits: 4 },
+  { key: "heart_rate", label: "HR", title: "Heart rate (bpm)", digits: 0 },
+  { key: "breathing_rate", label: "RR", title: "Breathing rate (breaths/min)", digits: 0 },
+  { key: "stress_score", label: "EDA", title: "Stress (EDA measurement)", digits: 3 },
+  { key: "face_asymmetry_score", label: "Face", title: "Face asymmetry score", digits: 4 },
 ];
+
+// "+38" -> up, "−5" -> down, "±0" -> flat (the arrow is display only).
+function deltaDirection(delta) {
+  if (delta.startsWith("+")) return "up";
+  if (delta.startsWith("−")) return "down";
+  return "flat";
+}
+const DELTA_ARROW = { up: " ▲", down: " ▼", flat: "" };
 
 function formatAgo(timestamp) {
   const minutes = minutesSince(timestamp);
@@ -55,16 +63,27 @@ export default function PatientCard({ patient, risk, nextUp, onAcknowledge, onCa
   const recheck = formatRecheck(patient);
   const missed = Boolean(patient.missed_recheck);
 
+  const pulsing = risk === "high" && isOpen;
+
   return (
-    <article className={`patient-card risk-${risk}${risk === "high" && isOpen ? " pulse" : ""}${missed ? " missed" : ""}`}>
+    <article className={`patient-card risk-${risk}${pulsing ? " pulse" : ""}${missed ? " missed" : ""}`}>
       <div className="card-header">
-        <div>
-          {nextUp && <span className="next-up">Next up</span>}
-          <h2 className="patient-name">{patient.name}</h2>
+        <div className="identity">
+          <h2 className="patient-title">
+            <span className="patient-number">#{patient.id}</span>
+            <span className="patient-name">{patient.name}</span>
+          </h2>
           <p className="complaint">{patient.chief_complaint || "No complaint recorded"}</p>
         </div>
         <div className="card-header-right">
-          <span className={`risk-pill risk-pill-${risk}`}>{risk.toUpperCase()}</span>
+          <div className="status-labels">
+            {nextUp && <span className="next-up">Next up</span>}
+            {missed && <span className="status-label status-missed">Missed recheck</span>}
+            <span className={`status-label risk-label risk-label-${risk}`}>
+              {pulsing && <span className="pulse-dot" aria-hidden="true" />}
+              {risk.toUpperCase()}
+            </span>
+          </div>
           <span className="wait-time">
             {minutes == null ? "—" : `${minutes} min`} since triage
           </span>
@@ -81,52 +100,64 @@ export default function PatientCard({ patient, risk, nextUp, onAcknowledge, onCa
         <div className="alert-block">
           <p className="reason">{alert.reason_text || "Alert received."}</p>
           {alert.recommended_action && <p className="action">{alert.recommended_action}</p>}
-          {isOpen ? (
-            <button className="ack-button" onClick={() => onAcknowledge(patient.id)}>
-              Acknowledge
-            </button>
-          ) : (
-            <p className="acked">✓ Acknowledged</p>
-          )}
         </div>
       )}
-
-      <div className="call-row">
-        <span className="call-status">
-          #{patient.id}
-          {calledAgo && <> · Called {calledAgo}</>}
-          {recheck && <span className={`recheck${recheck.due ? " recheck-due" : ""}`}>{recheck.text}</span>}
-        </span>
-        <button className={`call-button${calledAgo ? " called" : ""}`} onClick={() => onCall(patient.id)}>
-          {calledAgo ? "Call again" : "Call patient"}
-        </button>
-      </div>
 
       <table className="vitals">
         <thead>
           <tr>
-            <th scope="col"></th>
+            <th scope="col"><span className="visually-hidden">Vital</span></th>
             <th scope="col">Baseline</th>
             <th scope="col">Latest</th>
+            <th scope="col">Change</th>
           </tr>
         </thead>
         <tbody>
-          {VITALS.map(({ key, label, digits }) => {
+          {VITALS.map(({ key, label, title, digits }) => {
             const delta = formatDelta(baseline?.[key], latest?.[key], digits);
+            const direction = delta && deltaDirection(delta);
             return (
               <tr key={key}>
-                <th scope="row">{label}</th>
+                <th scope="row" title={title}>{label}</th>
                 <td>{formatValue(baseline?.[key], digits)}</td>
+                <td className="latest">{formatValue(latest?.[key], digits)}</td>
                 <td>
-                  {formatValue(latest?.[key], digits)}
-                  {delta && <span className="delta"> ({delta})</span>}
+                  {delta ? (
+                    <span className={`delta delta-${direction}`}>
+                      {delta}
+                      {DELTA_ARROW[direction]}
+                    </span>
+                  ) : (
+                    <span className="delta delta-none">—</span>
+                  )}
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <p className="units">HR in bpm · RR in breaths/min · EDA measurement · face asymmetry score{latest ? "" : " · awaiting rescan"}</p>
+      <p className="units">HR bpm · RR breaths/min · EDA measurement · Face asymmetry score{latest ? "" : " · awaiting rescan"}</p>
+
+      <div className="card-footer">
+        <div className="call-status">
+          {calledAgo && <span className="called-ago">Called {calledAgo}</span>}
+          {recheck && <span className={`recheck${recheck.due ? " recheck-due" : ""}`}>{recheck.text}</span>}
+          {alert && !isOpen && <span className="acked">Acknowledged</span>}
+        </div>
+        <div className="card-actions">
+          {alert && isOpen && (
+            <button className="button button-secondary ack-button" onClick={() => onAcknowledge(patient.id)}>
+              Acknowledge
+            </button>
+          )}
+          <button
+            className={`button call-button${calledAgo ? " button-secondary called" : " button-primary"}`}
+            onClick={() => onCall(patient.id)}
+          >
+            {calledAgo ? "Call again" : "Call patient"}
+          </button>
+        </div>
+      </div>
     </article>
   );
 }
