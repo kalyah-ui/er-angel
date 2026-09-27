@@ -126,7 +126,7 @@ export default function PatientCard({ patient, risk, nextUp, onAcknowledge, onCa
           })}
         </tbody>
       </table>
-      <p className="units">HR in bpm · RR in breaths/min · face asymmetry score{latest ? "" : " · awaiting rescan"}</p>
+      <p className="units">HR in bpm · RR in breaths/min · EDA measurement · face asymmetry score{latest ? "" : " · awaiting rescan"}</p>
     </article>
   );
 }
