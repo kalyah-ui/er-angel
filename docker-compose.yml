@@ -27,10 +27,10 @@ services:
       - "4000"
 
   web:
+    # Caddy + the built dashboard and kiosk (see deploy/web.Dockerfile).
     build:
-      context: ./frontend-dashboard
-      args:
-        VITE_API_URL: /api
+      context: .
+      dockerfile: deploy/web.Dockerfile
     restart: unless-stopped
     logging: *logging
     depends_on:
@@ -40,11 +40,18 @@ services:
       - "80:80"
       - "443:443"
     # Only what Caddy needs (not the API keys). ":?" = refuse to start if unset/empty.
+    # Hostnames come from .env (deploy/set-hosts.sh), so a custom domain is a
+    # config change, not a code change.
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+      DASHBOARD_ADDRESS: ${DASHBOARD_ADDRESS:?set DASHBOARD_ADDRESS in .env (bash deploy/set-hosts.sh)}
+      KIOSK_ADDRESS: ${KIOSK_ADDRESS:?set KIOSK_ADDRESS in .env (bash deploy/set-hosts.sh)}
       DASHBOARD_USER: ${DASHBOARD_USER:?set DASHBOARD_USER in .env}
       DASHBOARD_PASSWORD_HASH: ${DASHBOARD_PASSWORD_HASH:?set DASHBOARD_PASSWORD_HASH in .env}
       KIOSK_TOKEN: ${KIOSK_TOKEN:?set KIOSK_TOKEN in .env}
+      # Device login for the hosted kiosk (separate from the nurse login).
+      KIOSK_DEVICE_USER: ${KIOSK_DEVICE_USER:?set KIOSK_DEVICE_USER in .env (bash deploy/set-kiosk-device-password.sh)}
+      KIOSK_DEVICE_PASSWORD_HASH: ${KIOSK_DEVICE_PASSWORD_HASH:?set KIOSK_DEVICE_PASSWORD_HASH in .env (bash deploy/set-kiosk-device-password.sh)}
     volumes:
       # The folder, not the single file: git pull replaces files, and a
       # single-file bind mount would keep serving the old Caddyfile.

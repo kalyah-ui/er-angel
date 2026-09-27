@@ -1,6 +1,5 @@
 import "dotenv/config";
 import express from "express";
-import cors from "cors";
 import {
   SmartSpectraSDK,
   breathingMetrics,
@@ -11,6 +10,7 @@ import {
   ValidationCode,
 } from "@smartspectra/node-sdk";
 import { averageAsymmetryScore } from "./faceAsymmetry.js";
+import { allowedKioskOrigins, localAccess } from "./localAccess.js";
 
 const PORT = process.env.PORT || 4600;
 
@@ -291,7 +291,10 @@ async function runCapture(durationMs) {
 }
 
 const app = express();
-app.use(cors());
+// Only the kiosk's pages may call the camera agent (see localAccess.js):
+// http://localhost:5173 plus KIOSK_ORIGINS from presage-agent/.env.
+const kioskOrigins = allowedKioskOrigins();
+app.use(localAccess(kioskOrigins));
 app.use(express.json());
 
 app.get("/health", (req, res) => res.json({ ok: true }));
@@ -356,6 +359,7 @@ app.post("/cancel", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[presage-agent] listening on http://localhost:${PORT}`);
+  console.log(`[presage-agent] kiosk origins allowed: ${kioskOrigins.join(", ")}`);
   console.log("[presage-agent] using the local camera -- keep this process on the kiosk device.");
 });
 

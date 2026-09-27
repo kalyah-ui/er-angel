@@ -29,6 +29,14 @@ if [ "${1:-}" != "--pulled" ]; then
   exec bash "$0" --pulled
 fi
 
+# Missing required settings (e.g. a new hostname or login hash) must stop the
+# deploy BEFORE any container is touched, so the running site stays up.
+if ! config_error=$(docker compose config -q 2>&1); then
+  echo "DEPLOY FAILED: .env is missing required settings -- nothing was changed:" >&2
+  echo "$config_error" >&2
+  exit 1
+fi
+
 echo "==> Building and starting containers"
 docker compose up -d --build --remove-orphans 2>&1 | grep -vE '^ *#|^$' | grep -E 'Built|Recreated|Started|Healthy|Running|ERROR|error' || true
 
@@ -36,10 +44,15 @@ docker compose up -d --build --remove-orphans 2>&1 | grep -vE '^ *#|^$' | grep -
 echo "==> Reloading Caddy config"
 docker compose exec -T web caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1 | grep -iE 'error' || true
 
-site=$(grep -E '^SITE_ADDRESS=' .env | cut -d= -f2- | tr -d "'\"")
-echo "==> Waiting for https://$site/api/health"
+# Every public hostname must answer over HTTPS (new ones need a certificate first).
+sites=$(grep -E '^(SITE_ADDRESS|DASHBOARD_ADDRESS|KIOSK_ADDRESS)=' .env | cut -d= -f2- | tr -d "'\"" | sort -u)
+echo "==> Waiting for /api/health on: $(echo $sites)"
 for _ in $(seq 1 45); do
-  if curl -fsS --max-time 5 "https://$site/api/health" 2>/dev/null | grep -q '"ok":true'; then
+  pending=""
+  for site in $sites; do
+    curl -fsS --max-time 5 "https://$site/api/health" 2>/dev/null | grep -q '"ok":true' || pending="$pending $site"
+  done
+  if [ -z "$pending" ]; then
     docker image prune -f >/dev/null 2>&1 || true # old image layers from previous builds
     echo "DEPLOY OK: $(git branch --show-current) @ $(git log --oneline -1)"
     exit 0
@@ -47,7 +60,7 @@ for _ in $(seq 1 45); do
   sleep 2
 done
 
-echo "DEPLOY FAILED: https://$site/api/health not ok after 90s" >&2
+echo "DEPLOY FAILED: /api/health not ok after 90s on:$pending" >&2
 docker compose ps
 echo "--- last backend logs"; docker compose logs --no-color --tail 60 backend
 echo "--- last web (Caddy) logs"; docker compose logs --no-color --tail 20 web

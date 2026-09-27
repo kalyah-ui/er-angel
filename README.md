@@ -172,6 +172,19 @@ curl -X POST http://localhost:4000/admin/reset -H "Content-Type: application/jso
 
 ---
 
+## Hosted on Vultr
+
+The server (Terraform in `infra/`, Docker Compose + Caddy in `deploy/`) serves, over HTTPS:
+
+| URL | What | Login |
+|---|---|---|
+| `https://dashboard.<server>` (and the original `https://<server>`) | Nurse dashboard | nurse login |
+| `https://kiosk.<server>` | Hosted kiosk (production build) | kiosk **device** login (separate) |
+
+Hostnames live only in the server's `.env` (`deploy/set-hosts.sh <root-host>`), so a custom domain is a config change. The hosted kiosk never contains the kiosk token; it calls `/api` on its own origin behind its device login and can only reach kiosk endpoints. The camera still comes from `presage-agent` on the laptop: add the hosted origin to `KIOSK_ORIGINS` in `presage-agent/.env` (see `presage-agent/.env.example`) -- otherwise the hosted kiosk falls back to demo mode. The laptop kiosk (`npm run dev`, `http://localhost:5173`) works exactly as before.
+
+Redeploy: `scripts/deploy.ps1`. Request log: `scripts/logs.ps1`.
+
 ## Known limitations / honest caveats
 
 - **Facial asymmetry is a screening cue, not a diagnosis.** It's explicitly framed that way in the Gemini prompt and should stay that way in any demo narration.

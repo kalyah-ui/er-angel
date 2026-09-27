@@ -1,27 +1,30 @@
-# ER Angel -- public entry point on the server.
-#   https://{$SITE_ADDRESS}/       nurse dashboard (static files)
-#   https://{$SITE_ADDRESS}/api/*  backend API (the /api prefix is stripped)
+# ER Angel -- public entry point on the server. Hostnames come from .env
+# (set with deploy/set-hosts.sh), so a custom domain is a config change:
+#
+#   {$DASHBOARD_ADDRESS}, {$SITE_ADDRESS}  nurse dashboard + /api  (SITE_ADDRESS = old URL, kept as an alias)
+#   {$KIOSK_ADDRESS}                       hosted kiosk + /api (kiosk endpoints only)
 #
 # Access:
-#   - Browsers (dashboard, and its /api calls) log in with HTTP basic auth.
-#   - The kiosk (on a laptop, cross-origin) sends X-Kiosk-Token instead, and
-#     only reaches the endpoints it uses -- not the patient list, alerts, or
-#     /admin/reset.
-#   - CORS preflights and /api/health are open; the backend handles CORS.
+#   Dashboard hosts
+#     - Browsers log in with the nurse login (DASHBOARD_USER/_PASSWORD_HASH).
+#     - The laptop kiosk (http://localhost:5173, cross-origin) sends
+#       X-Kiosk-Token instead, and only reaches kiosk endpoints.
+#   Kiosk host
+#     - Everything needs the kiosk DEVICE login (KIOSK_DEVICE_USER/_HASH),
+#       separate from the nurse login. The kiosk calls /api on its own origin,
+#       so no token is baked into its public bundle.
+#     - Even logged in, only kiosk endpoints are reachable -- not the patient
+#       list, alerts, or /admin/reset.
+#   Both: /api/health is open; the backend handles CORS.
 #
-# Values come from /opt/er-angel/.env via docker-compose.yml, which refuses
-# to start if any of them is missing (an empty KIOSK_TOKEN would otherwise
-# match requests with no token at all). With SITE_ADDRESS set to a hostname
-# (e.g. 203-0-113-5.sslip.io), Caddy gets and renews HTTPS certificates itself.
+# docker-compose.yml refuses to start if any of these values is missing (an
+# empty token or hash would otherwise fail open).
 
-{$SITE_ADDRESS} {
-	encode zstd gzip
-
-	# ---- Access log, redacted. One JSON line per request with method, path,
-	# status, duration, client IP, basic-auth username, plus the Origin and
-	# whether an X-Kiosk-Token was sent (yes/no). ALL request headers are
-	# dropped, so the token, Authorization and cookies are never written.
-	# Read it with scripts/logs.ps1.
+# Redacted access log: method, path, status, origin, client IP, basic-auth
+# user, and whether an X-Kiosk-Token was sent (yes/no). ALL request headers
+# are dropped, so tokens, Authorization and cookies are never written.
+# Read it with scripts/logs.ps1.
+(access_log) {
 	map {http.request.header.X-Kiosk-Token} {kiosk_token_sent} {
 		~.+ yes
 		default no
@@ -40,6 +43,18 @@
 			resp_headers delete
 		}
 	}
+}
+
+(api) {
+	handle_path /api/* {
+		reverse_proxy {$BACKEND_UPSTREAM:backend:4000}
+	}
+}
+
+# ---------- nurse dashboard ----------
+{$DASHBOARD_ADDRESS}, {$SITE_ADDRESS} {
+	encode zstd gzip
+	import access_log
 
 	@needsLogin {
 		not {
@@ -57,13 +72,38 @@
 		{$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
 	}
 
-	handle_path /api/* {
-		reverse_proxy {$BACKEND_UPSTREAM:backend:4000}
-	}
+	import api
 
 	handle {
-		root * {$SITE_ROOT:/srv}
+		root * {$SITE_ROOT:/srv}/dashboard
 		try_files {path} /index.html
 		file_server
+	}
+}
+
+# ---------- hosted kiosk ----------
+{$KIOSK_ADDRESS} {
+	encode zstd gzip
+	import access_log
+
+	@needsDeviceLogin not path /api/health
+	basic_auth @needsDeviceLogin {
+		{$KIOSK_DEVICE_USER} {$KIOSK_DEVICE_PASSWORD_HASH}
+	}
+
+	@notKioskApi {
+		path /api/*
+		not path /api/checkin /api/reading /api/reading/* /api/patients/* /api/calls/* /api/speak /api/health
+	}
+
+	# route = run in this exact order.
+	route {
+		respond @notKioskApi "Not available on the kiosk" 403
+		import api
+		handle {
+			root * {$SITE_ROOT:/srv}/kiosk
+			try_files {path} /index.html
+			file_server
+		}
 	}
 }

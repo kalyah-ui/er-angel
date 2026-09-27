@@ -1,0 +1,11 @@
+# Build context for deploy/web.Dockerfile (repo root): only the two frontends
+# are needed. Secrets and local data never go into an image.
+*
+!frontend-dashboard
+!frontend-kiosk
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/*.log
+**/.DS_Store

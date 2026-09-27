@@ -84,6 +84,9 @@ export default function App() {
       // Don't hijack letters typed into the check-in form.
       if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
       const key = e.key.toLowerCase();
+      // The M/R panels focus their input immediately; without this the
+      // shortcut letter itself gets typed into it ("r2" -> Announce disabled).
+      if (key === "d" || key === "m" || key === "r") e.preventDefault();
       if (key === "d") {
         setArmed((prev) => (prev?.type === "elevated" ? null : { type: "elevated" }));
       } else if (key === "m") {
