@@ -12,8 +12,8 @@ function demoPatients() {
       chief_complaint: "Mild chest tightness",
       // Fixed values (not read from test_output.json, which is a shared sample
       // that changes) so they always match the pre-written alert below.
-      baseline: { heart_rate: 72, breathing_rate: 14, stress_score: null },
-      rescan: { heart_rate: 110, breathing_rate: 15, stress_score: null },
+      baseline: { heart_rate: 72, breathing_rate: 14, stress_score: 0.026, face_asymmetry_score: 0.0054 },
+      rescan: { heart_rate: 110, breathing_rate: 15, stress_score: 0.030, face_asymmetry_score: 0.0061 },
       alert: (label) => ({
         risk_level: "high",
         delta_summary:
@@ -25,8 +25,8 @@ function demoPatients() {
     {
       name: "Jordan Smith",
       chief_complaint: "Twisted ankle, pain worsening",
-      baseline: { heart_rate: 70, breathing_rate: 14, stress_score: null },
-      rescan: { heart_rate: 88, breathing_rate: 19, stress_score: null },
+      baseline: { heart_rate: 70, breathing_rate: 14, stress_score: 0.031, face_asymmetry_score: 0.0032 },
+      rescan: { heart_rate: 88, breathing_rate: 19, stress_score: 0.036, face_asymmetry_score: 0.0035 },
       alert: (label) => ({
         risk_level: "medium",
         delta_summary:
@@ -38,7 +38,7 @@ function demoPatients() {
     {
       name: "Sam Rivera",
       chief_complaint: "Sore throat",
-      baseline: { heart_rate: 76, breathing_rate: 15, stress_score: null },
+      baseline: { heart_rate: 76, breathing_rate: 15, stress_score: 0.028, face_asymmetry_score: 0.0041 },
       // Checked in an hour ago and ignored both recheck reminders, so the
       // dashboard shows "Missed recheck" straight after a reset. The
       // reminders are pre-marked announced: the kiosk never plays them.

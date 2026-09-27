@@ -47,6 +47,20 @@ test("is_demo column exists (migration) and every seeded patient is flagged", ()
   );
 });
 
+test("seeded demo readings include stress and face asymmetry values", () => {
+  seedDemo(T0);
+  const readings = db.prepare(`
+    SELECT patients.name, readings.is_baseline, readings.stress_score, readings.face_asymmetry_score
+    FROM readings
+    JOIN patients ON patients.id = readings.patient_id
+    ORDER BY patients.id, readings.id
+  `).all();
+
+  assert.strictEqual(readings.length, 5);
+  assert.ok(readings.every((reading) => Number.isFinite(reading.stress_score)));
+  assert.ok(readings.every((reading) => Number.isFinite(reading.face_asymmetry_score)));
+});
+
 test("right after a reset: Alex/Jordan count down 15/20 min, Sam is already missed", () => {
   seedDemo(T0);
   assert.deepStrictEqual(recheckFields(byName("Alex Chen").id, T0), {
