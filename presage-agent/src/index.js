@@ -155,7 +155,7 @@ function extractLandmarks(m) {
 }
 
 function extractEda(m) {
-  const entries = m?.eda?.level ?? m?.eda?.value ?? m?.eda?.scr ?? m?.eda?.tonic;
+  const entries = m?.eda?.trace ?? m?.eda?.level ?? m?.eda?.value ?? m?.eda?.scr ?? m?.eda?.tonic;
   if (!Array.isArray(entries) || entries.length === 0) return null;
   const vals = entries.map((e) => (typeof e === "number" ? e : e?.value)).filter((v) => typeof v === "number");
   if (!vals.length) return null;
