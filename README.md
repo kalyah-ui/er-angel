@@ -46,7 +46,7 @@ Built for [hackathon name] — targeting Best Use of Gemini API, Best Use of Pre
 | Heart rate | Presage `cardioMetrics` | rPPG, contactless |
 | Breathing rate | Presage `breathingMetrics` | needs chest visible in frame, camera should be stable/mounted |
 | Facial asymmetry (stroke screening) | Presage `faceMetrics` landmarks + custom geometry (`presage-agent/src/faceAsymmetry.js`) | Inspired by the "F" in FAST (Face, Arms, Speech, Time). Compared **relative to that patient's own baseline**, not an absolute threshold — everyone has natural asymmetry. **Not a diagnosis** — a supplementary signal for a nurse to look at. |
-| EDA / stress score | Presage `edaMetrics` | Electrodermal activity; field shape confirmed via live diagnostic logging in `presage-agent`, not from public docs |
+| EDA / stress score | Presage `edaMetrics` | Electrodermal activity; field shape confirmed via live diagnostic logging in `presage-agent`. |
 
 Every reading after the first is compared to that patient's **triage baseline**, not to a population norm. Comparison and risk scoring happen in `backend/src/services/geminiRisk.js` (primary path) with a rule-based fallback in `backend/src/logic/riskThresholds.js` if Gemini is unavailable — both use the same thresholds so alert behavior is consistent either way.
 
@@ -59,8 +59,6 @@ The kiosk speaks to the patient — check-in confirmation, rescan instructions, 
 - `backend/src/services/elevenLabsTts.js` — generates speech audio from text via the ElevenLabs API
 - `frontend-kiosk/src/lib/voice.js` + `useAnnouncer.js` — plays prompts on the kiosk, one line per screen, and surfaces PA-style announcements (e.g. recheck reminders) via `AnnouncementBanner`
 - A mute toggle (`MuteToggle` component) is available in the kiosk UI
-
-*(Whoever owns `elevenLabsTts.js` — worth confirming here which voice/model is used and whether audio is cached or generated fresh per prompt.)*
 
 ---
 
@@ -193,7 +191,7 @@ Redeploy: `scripts/deploy.ps1`. Request log: `scripts/logs.ps1`.
 
 ## Known limitations / honest caveats
 
-- **Facial asymmetry is a screening cue, not a diagnosis.** It's explicitly framed that way in the Gemini prompt and should stay that way in any demo narration.
+- **Facial asymmetry is a screening cue, not a diagnosis.** It's explicitly framed that way in the Gemini prompt.
 - **Breathing rate needs a stable, mounted camera** with the chest visible — handheld or poorly-framed setups will trigger validation warnings and may not produce a reading.
 - Asymmetry alert thresholds (`ABSOLUTE_FLOOR` / `RELATIVE_MULTIPLIER` in `riskThresholds.js`) were calibrated against a small number of real test captures, not a clinical dataset.
 
@@ -204,4 +202,4 @@ Redeploy: `scripts/deploy.ps1`. Request log: `scripts/logs.ps1`.
 - **Google Gemini API** — used in two distinct ways: structured JSON risk classification (baseline vs. current comparison across HR, breathing, asymmetry, EDA) and separate natural-language alert-text generation for the nurse dashboard.
 - **Presage** — multi-signal fusion: heart rate, breathing rate, facial-asymmetry stroke screening, and EDA/stress — not just a single vital sign.
 - **ElevenLabs** — natural, spoken voice updates at the kiosk (check-in confirmation, rescan prompts, PA-style announcements) via `backend/src/services/elevenLabsTts.js` and `frontend-kiosk/src/lib/voice.js` — no pre-recorded audio, no actors.
-- **Vultr** — [confirm deployment details once `deploy/`/`infra/` are finalized]
+- **Vultr** — infrastructure-as-code via Terraform (infra/), not a manually-clicked VM: a Vultr Compute instance provisioned from main.tf/variables.tf, bootstrapped on creation via cloud-init.yaml, with Caddy (deploy/Caddyfile) handling the reverse proxy and automatic HTTPS in front of the backend and dashboard. Backups/object storage are wired to Vultr Object Storage (infra/storage.tf, deploy/set-storage-env.sh, deploy/restore-db.sh), and deployment is scripted rather than manual (deploy/remote-deploy.sh, deploy/authorize-ci-key.sh).
