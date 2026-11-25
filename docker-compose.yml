@@ -1,8 +1,8 @@
-# Production stack for the Vultr server: backend + Caddy (HTTPS, dashboard,
-# /api proxy). The kiosk and presage-agent run on a laptop, not here.
+# Production stack for the server: backend + Caddy (HTTPS, dashboard,
+# hosted kiosk, /api proxy). presage-agent runs on the kiosk laptop, not here.
 #
-#   cp .env.example .env      # on the server, fill in real values (never committed)
-#   docker compose up -d --build
+#   bash deploy/init-env.sh <root-host>   # on the server: creates .env (never committed)
+#   bash deploy/remote-deploy.sh          # or: docker compose up -d --build
 #
 # Local development doesn't use this file -- keep using `npm run dev`.
 name: er-angel

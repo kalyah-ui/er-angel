@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Sets the public hostnames in the server's .env -- the only place they live.
 #
-#   bash /opt/er-angel/deploy/set-hosts.sh 149-248-60-145.sslip.io
-#   bash /opt/er-angel/deploy/set-hosts.sh erangel.example.com            # custom domain later
+#   bash /opt/er-angel/deploy/set-hosts.sh 34-47-40-44.sslip.io
+#   bash /opt/er-angel/deploy/set-hosts.sh erangel.health                 # after DNS moves
 #   bash /opt/er-angel/deploy/set-hosts.sh <root> <dashboard-host> <kiosk-host>
 #
 # Writes:
@@ -10,14 +10,17 @@
 #   DASHBOARD_ADDRESS  dashboard.<root>
 #   KIOSK_ADDRESS      kiosk.<root>
 #   CORS_ORIGINS       http://localhost:5173,https://<kiosk-host>
-# Then deploy (scripts/deploy.ps1) so Caddy and the backend pick them up.
+# Each of the three hostnames needs DNS pointing at the server (sslip.io
+# subdomains resolve by themselves). Then deploy (scripts/deploy.ps1 or
+# bash deploy/remote-deploy.sh) so Caddy and the backend pick them up -- a
+# plain container restart does NOT re-read .env.
 set -euo pipefail
 
 ROOT="${1:?usage: set-hosts.sh <root-host> [dashboard-host] [kiosk-host]}"
 DASHBOARD="${2:-dashboard.$ROOT}"
 KIOSK="${3:-kiosk.$ROOT}"
 ENV_FILE="${ENV_FILE:-/opt/er-angel/.env}"
-[ -w "$ENV_FILE" ] || { echo "Can't write $ENV_FILE (run as root)." >&2; exit 1; }
+[ -w "$ENV_FILE" ] || { echo "Can't write $ENV_FILE (run as the user that owns /opt/er-angel; on a new server, use init-env.sh first)." >&2; exit 1; }
 
 for host in "$ROOT" "$DASHBOARD" "$KIOSK"; do
   [[ "$host" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Not a hostname: $host" >&2; exit 1; }

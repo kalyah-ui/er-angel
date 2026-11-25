@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-[Kiosk Web App] --(camera)--> [Presage SDK] --vitals JSON--> [Backend API on Vultr]
+[Kiosk Web App] --(camera)--> [Presage SDK] --vitals JSON--> [Backend API on GCP VM]
         |                                                            |
    (check-in form)                                                   |
                                                                       v

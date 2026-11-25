@@ -14,17 +14,19 @@ param(
   [int]$N = 50,
   [int]$Status,
   [string]$Path,
-  [string]$Server
+  [string]$Server,
+  [string]$User,
+  [string]$Key
 )
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_server.ps1"
-$ip = Get-ErAngelServer $Server
+$ssh = Get-ErAngelSshArgs $Server $User $Key
 
 # When filtering, read further back so N matches can still be found.
 $tail = if ($Status -or $Path) { [Math]::Max($N * 40, 2000) } else { $N }
-$lines = & ssh -o BatchMode=yes -o ConnectTimeout=10 "root@$ip" "cd /opt/er-angel && docker compose exec -T web tail -n $tail /data/logs/access.log"
-if ($LASTEXITCODE -ne 0) { throw "Couldn't read the access log on root@$ip." }
+$lines = & ssh @ssh "cd /opt/er-angel && docker compose exec -T web tail -n $tail /data/logs/access.log"
+if ($LASTEXITCODE -ne 0) { throw "Couldn't read the access log on $($ssh[-1])." }
 
 $rows = foreach ($line in $lines) {
   try { $e = $line | ConvertFrom-Json } catch { continue }

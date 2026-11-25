@@ -4,7 +4,7 @@
  *
  *   - http://localhost:5173 (the local kiosk dev server) -- always allowed
  *   - anything in KIOSK_ORIGINS (presage-agent/.env, comma-separated), e.g.
- *     the hosted kiosk: KIOSK_ORIGINS=https://kiosk.149-248-60-145.sslip.io
+ *     the hosted kiosk: KIOSK_ORIGINS=https://kiosk.erangel.health
  *
  * A hosted (public HTTPS) kiosk calling http://localhost:4600 is a
  * "local network" request in Chrome. Older Chrome versions send a Private

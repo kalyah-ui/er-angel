@@ -1,5 +1,5 @@
 /**
- * Vultr Object Storage (S3-compatible) -- used for the ElevenLabs voice cache
+ * S3-compatible Object Storage -- used for the ElevenLabs voice cache
  * and nightly SQLite backups. Configured by S3_ENDPOINT, S3_BUCKET,
  * S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (server .env only). If any is
  * missing, storage is simply off: local dev and tests work without it.

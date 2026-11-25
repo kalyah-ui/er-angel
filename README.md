@@ -25,7 +25,7 @@ Built for [hackathon name] — targeting Best Use of Gemini API, Best Use of Pre
 │  (Express)        │
 │                    │──▶ Gemini (risk classification + nurse-facing alert text)
 │                    │──▶ ElevenLabs (kiosk voice updates, text-to-speech)
-│                    │──▶ Object storage / DB backup [confirm]
+│                    │──▶ S3-compatible storage (optional; off in production)
 └────────┬───────────┘
          │ polls
          ▼
@@ -35,7 +35,7 @@ Built for [hackathon name] — targeting Best Use of Gemini API, Best Use of Pre
 └────────────────────┘
 ```
 
-**Why `presage-agent` is a separate process:** Presage's SmartSpectra SDK is native/Node, not a browser package — it needs direct OS-level camera access, which a browser tab can't grant to arbitrary code. So `presage-agent` runs as its own local process on the kiosk device itself (next to the physical webcam), and the kiosk browser calls its local HTTP API (`localhost:4600`) to get a reading, then forwards those numbers to the main backend exactly like any other reading. The main backend, dashboard, and database can live anywhere (e.g. Vultr); only `presage-agent` is tied to the kiosk hardware.
+**Why `presage-agent` is a separate process:** Presage's SmartSpectra SDK is native/Node, not a browser package — it needs direct OS-level camera access, which a browser tab can't grant to arbitrary code. So `presage-agent` runs as its own local process on the kiosk device itself (next to the physical webcam), and the kiosk browser calls its local HTTP API (`localhost:4600`) to get a reading, then forwards those numbers to the main backend exactly like any other reading. The main backend, dashboard, and database can live anywhere (currently a Google Cloud VM); only `presage-agent` is tied to the kiosk hardware.
 
 ---
 
@@ -73,8 +73,9 @@ er-angel/
 ├── frontend-kiosk/        Patient-facing check-in / rescan flow (browser)
 ├── frontend-dashboard/   Nurse-facing alert dashboard (browser)
 ├── docs/                 Architecture notes, demo script
-├── deploy/ / infra/       [confirm — deployment/infra config, e.g. Vultr]
-├── scripts/               [confirm — top-level utility scripts]
+├── deploy/               Server config + scripts: Caddyfile, web image, init-env/set-hosts/deploy scripts
+├── infra/                Old Vultr Terraform (history only, see "Hosting & deployment")
+├── scripts/              Laptop-side PowerShell: deploy.ps1, logs.ps1
 └── test_output.json       [confirm — sample/fixture data?]
 ```
 
@@ -149,9 +150,9 @@ curl -X POST http://localhost:4000/admin/reset -H "Content-Type: application/jso
 | `GEMINI_MODEL` | `backend/.env` | Defaults to a Gemini flash-tier model |
 | `PRESAGE_API_KEY` | `presage-agent/.env` | Presage SmartSpectra SDK |
 | `ELEVENLABS_API_KEY` | `backend/.env` | ElevenLabs text-to-speech for kiosk voice updates (check-in confirmations, rescan prompts, PA-style announcements) |
-| *(object storage / backup creds)* | `backend/.env` [confirm] | If `dbBackup.js`/`objectStorage.js` push data off-instance |
+| `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (+ optional `S3_REGION`, `BACKUP_HOUR_UTC`) | `backend/.env` / server `.env` | Optional S3-compatible bucket for the voice cache and nightly SQLite backups. Unset = off (the default, and how production runs) |
 
-*(Whoever owns `objectStorage.js` and `dbBackup.js` — please fill in the exact env var names here.)*
+The server's full list, with which values are secrets, is in [.env.example](.env.example).
 
 ---
 
@@ -172,16 +173,21 @@ curl -X POST http://localhost:4000/admin/reset -H "Content-Type: application/jso
 
 ---
 
-## Hosted on Vultr
+## Hosting & deployment
 
-The server (Terraform in `infra/`, Docker Compose + Caddy in `deploy/`) serves, over HTTPS:
+The server is a Google Compute Engine VM (e2-medium, Ubuntu 24.04, `northamerica-northeast1`, static IP `34.47.40.44`) running Docker Compose ([docker-compose.yml](docker-compose.yml)):
+
+- **backend**: the Express API. SQLite and the voice cache live in the `backend-data` Docker volume on the VM's disk. It isn't published; only Caddy can reach it.
+- **web**: Caddy ([deploy/Caddyfile](deploy/Caddyfile)) handles HTTPS (Let's Encrypt), the login, and the `/api` proxy. Its image ([deploy/web.Dockerfile](deploy/web.Dockerfile)) builds both frontends and serves them from `/srv/dashboard` and `/srv/kiosk`, so nothing is copied to the server by hand.
+
+The project lives at `/opt/er-angel` (a git checkout of `main`), owned by the deploy user, with config in `/opt/er-angel/.env` (chmod 600, never in git). It serves, over HTTPS:
 
 | URL | What | Login |
 |---|---|---|
-| `https://dashboard.<server>` (and the original `https://<server>`) | Nurse dashboard | nurse login |
-| `https://kiosk.<server>` | Hosted kiosk (production build) | none (public) |
+| `https://dashboard.erangel.health` (and `https://erangel.health`) | Nurse dashboard + `/api` | nurse login (Caddy basic auth); the laptop kiosk uses `X-Kiosk-Token` instead |
+| `https://kiosk.erangel.health` | Hosted kiosk (production build) | none (public) |
 
-Hostnames live only in the server's `.env` (`deploy/set-hosts.sh <root-host>`), so a custom domain is a config change. The hosted kiosk never contains the kiosk token; it calls `/api` on its own origin. Because it's public, it has guardrails:
+Hostnames live only in the server's `.env` (`deploy/set-hosts.sh <root-host>`), so changing the domain is a config change. All three need DNS A records pointing at the server. The hosted kiosk never contains the kiosk token; it calls `/api` on its own origin. Because it's public, it has guardrails:
 
 - Only kiosk endpoints are reachable (exact list in `deploy/Caddyfile`); the patient list, alerts, nurse calls and `/admin/reset` return 403.
 - Per-IP rate limits on its API traffic, e.g. 5 check-ins/min (`backend/src/logic/rateLimit.js`).
@@ -189,7 +195,60 @@ Hostnames live only in the server's `.env` (`deploy/set-hosts.sh <root-host>`), 
 - At most `GEMINI_MAX_CALLS_PER_HOUR` Gemini requests per hour (default 60); beyond that, alerts are rule-based.
  The camera still comes from `presage-agent` on the laptop: add the hosted origin to `KIOSK_ORIGINS` in `presage-agent/.env` (see `presage-agent/.env.example`) -- otherwise the hosted kiosk falls back to demo mode. The laptop kiosk (`npm run dev`, `http://localhost:5173`) works exactly as before.
 
-Redeploy: `scripts/deploy.ps1`. Request log: `scripts/logs.ps1`.
+### Setting up a new server
+
+Prerequisites (done in the cloud console): ports 80/443 open, Docker installed (`curl -fsSL https://get.docker.com | sudo sh`), the deploy user in the `docker` group, 2 GB swap, and `/opt/er-angel` owned by the deploy user. Nothing depends on Terraform or cloud-init.
+
+```bash
+ssh -i ~/.ssh/er-angel-gcp salma@34.47.40.44
+git clone https://github.com/kalyah-ui/er-angel.git /opt/er-angel
+cd /opt/er-angel
+bash deploy/init-env.sh 34-47-40-44.sslip.io   # creates .env: fresh KIOSK_TOKEN, hidden prompts for
+                                               # Gemini/ElevenLabs keys and the dashboard password
+bash deploy/remote-deploy.sh                   # builds, starts, waits for /api/health on all hosts
+```
+
+`init-env.sh` refuses to overwrite an existing `.env` and never prints a value. To change one setting later: `deploy/set-hosts.sh`, `deploy/set-dashboard-password.sh`, or edit `.env` on the server and redeploy (a plain `docker compose restart` does not re-read `.env`; `docker compose up -d` does).
+
+If the build runs out of memory (unlikely: better-sqlite3 uses a prebuilt binary), build the two images on a laptop, push them to Artifact Registry, and add `image:` lines to `docker-compose.yml`.
+
+### Testing before DNS moves
+
+On the temporary `34-47-40-44.sslip.io` hostnames (sslip.io resolves them to the IP, so no DNS is needed):
+
+1. `curl -s https://34-47-40-44.sslip.io/api/health`, plus the same for the `dashboard.` and `kiosk.` subdomains: each returns `{"ok":true}`. If not, `docker compose logs web --tail 30` shows certificate errors.
+2. `https://dashboard.34-47-40-44.sslip.io` asks for the nurse login, then shows the patients. If it's empty, load the demo patients with the dashboard's "Reset demo" button or `docker compose exec -T backend node scripts/seed-demo.js` (both wipe existing data first).
+3. Hosted kiosk: on `https://kiosk.34-47-40-44.sslip.io`, check in a patient, then rescan them (`D` arms elevated vitals). An alert appears on the dashboard.
+4. Laptop kiosk: in `frontend-kiosk/.env.local`, set `VITE_API_URL=https://dashboard.34-47-40-44.sslip.io/api` and `VITE_KIOSK_TOKEN` (read it on the server: `grep ^KIOSK_TOKEN= /opt/er-angel/.env`), then `npm run dev` and repeat step 3.
+5. `https://kiosk.34-47-40-44.sslip.io/api/patients` returns 403, and the dashboard without a login returns 401.
+
+### DNS cutover
+
+In Porkbun, point the A records for `erangel.health`, `dashboard.erangel.health` and `kiosk.erangel.health` at the server. Once they resolve, on the server run `bash deploy/set-hosts.sh erangel.health && bash deploy/remote-deploy.sh`. Update the laptop kiosk's `VITE_API_URL` to `https://dashboard.erangel.health/api`, and set presage-agent's `KIOSK_ORIGINS=https://kiosk.erangel.health`.
+
+### Redeploying
+
+Every push to `main` deploys automatically ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) over SSH with a deploy-only key that can run nothing but `deploy/remote-deploy.sh`. Setup, once:
+
+1. `ssh-keygen -t ed25519 -f er-angel-deploy -C er-angel-deploy` (press Enter twice: CI needs it without a passphrase)
+2. `Get-Content er-angel-deploy.pub | ssh -i ~/.ssh/er-angel-gcp salma@34.47.40.44 bash /opt/er-angel/deploy/authorize-ci-key.sh`
+3. GitHub secrets: `DEPLOY_SSH_KEY` (the private key file), `DEPLOY_HOST=34.47.40.44`, `DEPLOY_USER=salma`, and `DEPLOY_KNOWN_HOSTS` (output of `ssh-keyscan -t ed25519 34.47.40.44`). Until all four are set, the workflow skips with a warning.
+
+From a laptop, use `scripts/deploy.ps1` (redeploy) and `scripts/logs.ps1` (Caddy's redacted request log). They read the server, SSH user, key and public hostname from parameters or environment variables:
+
+```powershell
+$env:ER_ANGEL_SERVER = "34.47.40.44"; $env:ER_ANGEL_USER = "salma"
+$env:ER_ANGEL_SSH_KEY = "$HOME\.ssh\er-angel-gcp"; $env:ER_ANGEL_SITE = "erangel.health"
+.\scripts\deploy.ps1
+```
+
+### Backups
+
+Bucket backups are **off** on this server: the `S3_*` variables are unset, so the backend logs `nightly backups off` and keeps the voice cache on disk only. The VM's disk is protected by scheduled GCP disk snapshots instead. The backup code (`backend/src/services/dbBackup.js`, `objectStorage.js`, `deploy/restore-db.sh`) still works with any S3-compatible bucket: set `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (optionally `S3_REGION`, `BACKUP_HOUR_UTC`) with `deploy/set-storage-env.sh`. Google Cloud Storage's S3 API lacks multi-object delete, which backup pruning uses, so that would need a small change first.
+
+### History: Vultr
+
+During the hackathon this ran on a Vultr VM provisioned by Terraform (`infra/`, with `infra/cloud-init.yaml`) and used Vultr Object Storage for backups. `infra/` is kept only to tear those resources down and isn't used by the current server.
 
 ## Known limitations / honest caveats
 
@@ -204,4 +263,4 @@ Redeploy: `scripts/deploy.ps1`. Request log: `scripts/logs.ps1`.
 - **Google Gemini API** — used in two distinct ways: structured JSON risk classification (baseline vs. current comparison across HR, breathing, asymmetry, EDA) and separate natural-language alert-text generation for the nurse dashboard.
 - **Presage** — multi-signal fusion: heart rate, breathing rate, facial-asymmetry stroke screening, and EDA/stress — not just a single vital sign.
 - **ElevenLabs** — natural, spoken voice updates at the kiosk (check-in confirmation, rescan prompts, PA-style announcements) via `backend/src/services/elevenLabsTts.js` and `frontend-kiosk/src/lib/voice.js` — no pre-recorded audio, no actors.
-- **Vultr** — [confirm deployment details once `deploy/`/`infra/` are finalized]
+- **Vultr** — hosted the hackathon build (Terraform-provisioned VM + Object Storage backups, see `infra/`). It now runs on Google Cloud; see "Hosting & deployment".
