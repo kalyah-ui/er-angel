@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Merges Object Storage settings (S3_* lines on stdin) into the server's .env,
 # replacing any existing S3_* lines. Values are never printed. Used by
-# infra/push-storage-keys.ps1:
+# infra/push-storage-keys.ps1 (old Vultr setup), or by hand for any bucket:
 #
-#   <S3_* lines> | ssh root@<server> bash /opt/er-angel/deploy/set-storage-env.sh
+#   <S3_* lines> | ssh <user>@<server> bash /opt/er-angel/deploy/set-storage-env.sh
 set -euo pipefail
 
 ENV_FILE="${1:-/opt/er-angel/.env}"

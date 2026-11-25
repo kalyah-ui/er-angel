@@ -18,7 +18,7 @@
 
 6. **Close (30s)** — Name the stack explicitly: "Presage gives us the
    contactless vitals, Gemini reasons about what changed and why it
-   matters, and it's all running live on Vultr." Then stop talking.
+   matters, and it's all running live on Google Cloud." Then stop talking.
 
 ## Fallback plan
 If the camera or wifi fails live, play the pre-recorded backup video

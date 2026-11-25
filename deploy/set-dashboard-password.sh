@@ -3,11 +3,11 @@
 # (hidden), hashed with Caddy (bcrypt) and stored only as a hash in .env --
 # never written or printed in plain text.
 #
-#   ssh -t root@<server> bash /opt/er-angel/deploy/set-dashboard-password.sh
+#   ssh -t <user>@<server> bash /opt/er-angel/deploy/set-dashboard-password.sh
 set -euo pipefail
 
 ENV_FILE="${1:-/opt/er-angel/.env}"
-[ -w "$ENV_FILE" ] || { echo "Can't write $ENV_FILE (run as root)."; exit 1; }
+[ -w "$ENV_FILE" ] || { echo "Can't write $ENV_FILE (run as the user that owns /opt/er-angel)."; exit 1; }
 
 read -rsp "New dashboard password: " pw; echo
 read -rsp "Repeat it: " pw2; echo
